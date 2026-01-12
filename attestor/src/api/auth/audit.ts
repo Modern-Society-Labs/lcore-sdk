@@ -39,6 +39,11 @@ export type AuditAction =
 	// Emergency actions
 	| 'emergency.pause'
 	| 'emergency.withdrawal'
+	// L{CORE} management
+	| 'lcore.add_schema_admin'
+	| 'lcore.remove_schema_admin'
+	| 'lcore.register_provider_schema'
+	| 'lcore.deprecate_provider_schema'
 
 export interface AuditLogEntry {
 	adminId: string

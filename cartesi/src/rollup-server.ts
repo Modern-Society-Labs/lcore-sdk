@@ -1,14 +1,12 @@
 /**
- * Test Rollup Server
+ * L{CORE} Rollup Server
  *
- * A real implementation of the Cartesi rollup server HTTP API for E2E testing.
+ * Implementation of the Cartesi rollup server HTTP API.
  * This server:
  * 1. Accepts advance/inspect requests via HTTP endpoints
  * 2. Queues them for the DApp to process via /finish
  * 3. Collects notices, reports, and vouchers from the DApp
- * 4. Returns results to the test client
- *
- * This enables true end-to-end testing: API -> Storage -> Query
+ * 4. Returns results to clients
  */
 
 import http from 'http';
@@ -163,14 +161,14 @@ function handleVoucher(body: string, res: http.ServerResponse): void {
   res.end(JSON.stringify({ ok: true }));
 }
 
-// ============= Test API Endpoints =============
+// ============= Input API Endpoints =============
 
 /**
- * POST /test/advance - Submit an advance request for testing
+ * POST /input/advance - Submit an advance request
  * Body: { sender: string, payload: object }
  * Returns: { status, notices, reports, vouchers }
  */
-async function handleTestAdvance(
+async function handleInputAdvance(
   body: string,
   res: http.ServerResponse
 ): Promise<void> {
@@ -210,11 +208,11 @@ async function handleTestAdvance(
 }
 
 /**
- * POST /test/inspect - Submit an inspect request for testing
+ * POST /input/inspect - Submit an inspect request
  * Body: { query: string } or { type: string, params: object }
  * Returns: { reports }
  */
-async function handleTestInspect(
+async function handleInputInspect(
   body: string,
   res: http.ServerResponse
 ): Promise<void> {
@@ -249,9 +247,9 @@ async function handleTestInspect(
 }
 
 /**
- * GET /test/status - Get server status
+ * GET /status - Get server status
  */
-function handleTestStatus(res: http.ServerResponse): void {
+function handleStatus(res: http.ServerResponse): void {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(
     JSON.stringify({
@@ -326,16 +324,24 @@ const server = http.createServer((req, res) => {
       } else if (path === '/voucher' && req.method === 'POST') {
         handleVoucher(body, res);
       }
-      // Test API endpoints (for E2E tests)
-      else if (path === '/test/advance' && req.method === 'POST') {
-        await handleTestAdvance(body, res);
-      } else if (path === '/test/inspect' && req.method === 'POST') {
-        await handleTestInspect(body, res);
-      } else if (path === '/test/status' && req.method === 'GET') {
-        handleTestStatus(res);
+      // Input API endpoints (for clients)
+      else if (path === '/input/advance' && req.method === 'POST') {
+        await handleInputAdvance(body, res);
+      } else if (path === '/input/inspect' && req.method === 'POST') {
+        await handleInputInspect(body, res);
+      } else if (path === '/status' && req.method === 'GET') {
+        handleStatus(res);
       } else if (path === '/health' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'healthy' }));
+      }
+      // Legacy /test/* endpoints (for backwards compatibility)
+      else if (path === '/test/advance' && req.method === 'POST') {
+        await handleInputAdvance(body, res);
+      } else if (path === '/test/inspect' && req.method === 'POST') {
+        await handleInputInspect(body, res);
+      } else if (path === '/test/status' && req.method === 'GET') {
+        handleStatus(res);
       } else {
         res.writeHead(404);
         res.end('Not found');
@@ -353,7 +359,7 @@ const PORT = parseInt(process.env.PORT || '5004', 10);
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║           L{CORE} Test Rollup Server                         ║
+║              L{CORE} Rollup Server                           ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Cartesi API (for DApp):                                     ║
 ║    POST /finish  - DApp polls for next request               ║
@@ -361,11 +367,11 @@ server.listen(PORT, '0.0.0.0', () => {
 ║    POST /report  - DApp submits reports                      ║
 ║    POST /voucher - DApp submits vouchers                     ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Test API (for E2E tests):                                   ║
-║    POST /test/advance - Submit advance request               ║
-║    POST /test/inspect - Submit inspect query                 ║
-║    GET  /test/status  - Get server status                    ║
-║    GET  /health       - Health check                         ║
+║  Input API (for clients):                                    ║
+║    POST /input/advance - Submit advance request              ║
+║    POST /input/inspect - Submit inspect query                ║
+║    GET  /status        - Get server status                   ║
+║    GET  /health        - Health check                        ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Listening on port ${PORT}                                       ║
 ╚══════════════════════════════════════════════════════════════╝

@@ -1,0 +1,15 @@
+services:
+  attestor:
+    build:
+      context: ./
+      dockerfile: ./attestor.dockerfile
+      args:
+        GL_TOKEN: ${GL_TOKEN}
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LCORE_ENABLED: ${LCORE_ENABLED:-1}
+      PRIVATE_KEY: ${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}
+    ports:
+      - 8001:8001
+    restart: on-failure

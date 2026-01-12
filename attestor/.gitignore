@@ -1,0 +1,62 @@
+# Environment files
+.env
+.env.*
+.env.development
+.env.production
+.env.test
+.env.local
+envs
+
+# Dependencies
+node_modules
+/lib
+
+# Build outputs
+out
+.cache
+coverage/
+*.LICENSE.txt
+browser/resources
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+extra-contracts-config.json
+example-local
+ngrok.yml
+src/test.ts
+
+# Certificates and private keys (SECURITY)
+cert/*.pem
+cert/*.key
+cert/*.p12
+cert/*.pfx
+*.pem
+*.key
+**/private-key.*
+**/*_private*
+
+# Cookies/credentials
+*cookies*.json
+*cookies*.txt
+
+# Keep example files as templates (negate the pattern)
+!.env.sample
+!.env.*.example
+!.env.example
+
+# Internal documentation (exclude from public repo)
+memory-bank/
+docs/
+
+# Build artifacts
+dist/
+*.tsbuildinfo

@@ -6,6 +6,7 @@ import type { WebSocket } from 'ws'
 import { WebSocketServer } from 'ws'
 
 import { API_SERVER_PORT, BROWSER_RPC_PATHNAME, WS_PATHNAME } from '#src/config/index.ts'
+import { initDecryption } from '#src/lcore/index.ts'
 import { AttestorServerSocket } from '#src/server/socket.ts'
 import { getAttestorAddress } from '#src/server/utils/generics.ts'
 import { addKeepAlive } from '#src/server/utils/keep-alive.ts'
@@ -27,6 +28,9 @@ const DISABLE_BGP_CHECKS = getEnvVariable('DISABLE_BGP_CHECKS') === '1'
  * and listens on the given port.
  */
 export async function createServer(port = PORT) {
+	// Initialize L{CORE} decryption for privacy-preserving responses
+	initDecryption()
+
 	const http = createHttpServer()
 	const serveBrowserRpc = serveStatic(
 		'browser',

@@ -1,10 +1,15 @@
 import { MAX_CLAIM_TIMESTAMP_DIFF_S } from '#src/config/index.ts'
+import { submitAttestationToLCore, discretizeClaimData } from '#src/lcore/index.ts'
 import { ClaimTunnelResponse } from '#src/proto/api.ts'
 import { getApm } from '#src/server/utils/apm.ts'
 import { assertTranscriptsMatch, assertValidClaimRequest } from '#src/server/utils/assert-valid-claim-request.ts'
 import { getAttestorAddress, signAsAttestor } from '#src/server/utils/generics.ts'
 import type { RPCHandler } from '#src/types/index.ts'
 import { AttestorError, createSignDataForClaim, getIdentifierFromClaimInfo, unixTimestampSeconds } from '#src/utils/index.ts'
+import { getEnvVariable } from '#src/utils/env.ts'
+
+// Enable/disable L{CORE} integration (enabled by default)
+const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
 
 export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 	claimRequest,
@@ -97,6 +102,72 @@ export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 			ClaimTunnelResponse.encode(res).finish(),
 			client.metadata.signatureType
 		)
+	}
+
+	// Submit successful claim to L{CORE} Cartesi layer
+	if(LCORE_ENABLED && res.claim && !res.error) {
+		try {
+			const lcoreTx = getApm()
+				?.startTransaction('submitToLCore', { childOf: tx })
+
+			// Parse parameters to extract bucket data
+			let parsedParams: Record<string, unknown> = {}
+			try {
+				parsedParams = JSON.parse(res.claim.parameters || '{}')
+			} catch {
+				// Parameters not JSON, skip bucket extraction
+			}
+
+			// Determine flow type from parameters
+			const flowType = parsedParams.url ? 'web_request' : 'generic'
+
+			// Discretize claim data into privacy-preserving buckets
+			const buckets = discretizeClaimData(
+				res.claim.provider,
+				flowType,
+				parsedParams
+			)
+
+			// Convert claim signature to base64 for storage
+			const signatureBase64 = Buffer.from(res.signatures.claimSignature).toString('base64')
+
+			const lcoreResult = await submitAttestationToLCore({
+				id: res.claim.identifier,
+				attestationHash: res.claim.identifier,
+				ownerAddress: res.claim.owner,
+				provider: res.claim.provider,
+				flowType,
+				validFrom: res.claim.timestampS,
+				teeSignature: signatureBase64,
+				buckets,
+				data: [{
+					key: 'parameters',
+					value: Buffer.from(res.claim.parameters || '').toString('base64'),
+					encryptionKeyId: 'none', // Not encrypted for now
+				}, {
+					key: 'context',
+					value: Buffer.from(res.claim.context || '').toString('base64'),
+					encryptionKeyId: 'none',
+				}],
+			}, res.signatures.attestorAddress)
+
+			if(lcoreResult.success) {
+				logger.info(
+					{ attestationId: lcoreResult.attestationId },
+					'Claim submitted to L{CORE}'
+				)
+			} else {
+				logger.warn(
+					{ error: lcoreResult.error, details: lcoreResult.details },
+					'Failed to submit claim to L{CORE}'
+				)
+			}
+
+			lcoreTx?.end()
+		} catch(err) {
+			// L{CORE} submission failure should not fail the claim
+			logger.error({ err }, 'Error submitting to L{CORE}')
+		}
 	}
 
 	// remove tunnel from client -- to free up our mem

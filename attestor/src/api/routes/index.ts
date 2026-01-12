@@ -11,6 +11,7 @@ import { handleApiKeysRoute } from './api-keys.ts'
 import { handleAuditRoute } from './audit.ts'
 import { handleOperatorsRoute } from './operators.ts'
 import { handleStatsRoute } from './stats.ts'
+import { handleLCoreRoute } from './lcore.ts'
 import { sendError, handleCorsPrelight, setCorsHeaders } from '../utils/http.ts'
 
 /**
@@ -62,6 +63,10 @@ export async function handleApiRequest(
 
 		if(path.startsWith('/api/stats')) {
 			return await handleStatsRoute(req, res, path)
+		}
+
+		if(path.startsWith('/api/lcore')) {
+			return await handleLCoreRoute(req, res, path)
 		}
 
 		// No handler found

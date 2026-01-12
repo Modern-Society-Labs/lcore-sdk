@@ -2,7 +2,6 @@
 import type { ZKEngine } from '@reclaimprotocol/zk-symmetric-crypto'
 import { utils } from 'ethers'
 
-import { createClaimOnAvs } from '#src/avs/client/create-claim-on-avs.ts'
 import { createClaimOnAttestor } from '#src/client/index.ts'
 import { benchmark } from '#src/external-rpc/benchmark.ts'
 import type { CreateClaimResponse, ExternalRPCClient, ExternalRPCErrorResponse, ExternalRPCIncomingMsg, ExternalRPCOutgoingMsg, ExternalRPCResponse, RPCCreateClaimOptions } from '#src/external-rpc/types.ts'
@@ -109,34 +108,6 @@ async function _handleIncomingMessage(req: ExternalRPCIncomingMsg): Promise<
 		})
 		const response = mapToCreateClaimResponse(claimTunnelRes)
 		return { type: 'createClaimDone', response }
-	case 'createClaimOnAvs':
-		const avsRes = await createClaimOnAvs({
-			...req.request,
-			payer: req.request.payer === 'attestor'
-				? { attestor: getWsApiUrlFromBaseUrl() }
-				: undefined,
-			context: req.request.context
-				? JSON.parse(req.request.context)
-				: undefined,
-			zkOperators: getZkOperators(
-				req.request.zkOperatorMode, req.request.zkEngine
-			),
-			oprfOperators: getOprfOperators(
-				req.request.zkOperatorMode, req.request.zkEngine
-			),
-			logger,
-			onStep(step) {
-				sendMessageToApp({
-					type: 'createClaimOnAvsStep',
-					step,
-					id: req.id,
-				})
-			},
-		})
-		return {
-			type: 'createClaimOnAvsDone',
-			response: avsRes,
-		}
 	case 'createClaimOnMechain':
 		const mechainRes = await createClaimOnMechain({
 			...req.request,

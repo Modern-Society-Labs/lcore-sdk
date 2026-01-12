@@ -69,7 +69,7 @@ export function createBgpListener(logger: Logger): BGPListener {
 
 		ws = makeWebSocket(BGP_WS_URL)
 		ws.onopen = onOpen
-		ws.onerror = (ev) => onClose(ev)
+		ws.onerror = (ev) => onClose(ev as unknown as Error)
 		ws.onclose = () => onClose(new Error('Unexpected close'))
 		ws.onmessage = ({ data }) => {
 			const str = typeof data === 'string' ? data : data.toString()

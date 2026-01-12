@@ -1,9 +1,7 @@
 import type { OPRFOperator, ZKEngine, ZKOperator } from '@reclaimprotocol/zk-symmetric-crypto'
 import '#src/external-rpc/global.d.ts'
 
-import type { TaskCompletedEventObject } from '#src/avs/contracts/LocaleServiceManager.ts'
-import type { CreateClaimOnAvsOpts, CreateClaimOnAvsStep } from '#src/avs/types/index.ts'
-import type { CreateClaimOnMechainStep } from '#src/mechain/types/index.ts'
+import type { CreateClaimOnMechainOpts, CreateClaimOnMechainStep } from '#src/mechain/types/index.ts'
 import type { AuthenticationRequest } from '#src/proto/api.ts'
 import type { extractHTMLElement, extractJSONValueIndex } from '#src/providers/http/utils.ts'
 import type {
@@ -42,15 +40,8 @@ export type RPCCreateClaimOptions<N extends ProviderName = any> = Omit<
 	'zkOperators' | 'context' | 'client'
 > & CreateClaimRPCBaseOpts
 
-export type RPCCreateClaimOnAvsOptions<N extends ProviderName = any> = Omit<
-	CreateClaimOnAvsOpts<N>,
-	'zkOperators' | 'context' | 'payer'
-> & {
-	payer?: 'attestor'
-} & CreateClaimRPCBaseOpts
-
 export type RPCCreateClaimOnMechainOptions<N extends ProviderName = any> = Omit<
-	CreateClaimOnAvsOpts<N>,
+	CreateClaimOnMechainOpts<N>,
 	'zkOperators' | 'context'
 > & CreateClaimRPCBaseOpts
 
@@ -77,11 +68,6 @@ type LogLevelOptions = {
 	 * via postMessage
 	 */
 	sendLogsToApp: boolean
-}
-
-type AVSCreateResult = {
-	object: TaskCompletedEventObject
-	txHash: string
 }
 
 type MechainCreateResult = {
@@ -111,10 +97,6 @@ export type ExternalRPCClient = {
 	 * Create a claim on the attestor where the RPC SDK is hosted.
 	 */
 	createClaim(options: RPCCreateClaimOptions): Promise<CreateClaimResponse>
-	/**
-	 * Create a claim on the AVS
-	 */
-	createClaimOnAvs(opts: RPCCreateClaimOnAvsOptions): Promise<AVSCreateResult>
 	/**
 	 * Create a claim on Mechain
 	 */
@@ -213,7 +195,6 @@ type AsResponse<T> = T & { isResponse: true }
 // spread out each key because TS can't handle
 export type ExternalRPCIncomingMsg = (
 	ExternalRPCRequest<ExternalRPCClient, 'createClaim'>
-	| ExternalRPCRequest<ExternalRPCClient, 'createClaimOnAvs'>
 	| ExternalRPCRequest<ExternalRPCClient, 'createClaimOnMechain'>
 	| ExternalRPCRequest<ExternalRPCClient, 'extractHtmlElement'>
 	| ExternalRPCRequest<ExternalRPCClient, 'extractJSONValueIndex'>
@@ -244,7 +225,6 @@ export type ExternalRPCIncomingMsg = (
  */
 export type ExternalRPCOutgoingMsg = (
 	AsResponse<ExternalRPCResponse<ExternalRPCClient, 'createClaim'>>
-	| AsResponse<ExternalRPCResponse<ExternalRPCClient, 'createClaimOnAvs'>>
 	| AsResponse<ExternalRPCResponse<ExternalRPCClient, 'extractHtmlElement'>>
 	| AsResponse<ExternalRPCResponse<ExternalRPCClient, 'extractJSONValueIndex'>>
 	| AsResponse<ExternalRPCResponse<ExternalRPCClient, 'getCurrentMemoryUsage'>>
@@ -264,12 +244,6 @@ export type ExternalRPCOutgoingMsg = (
 				name: 'attestor-progress'
 				step: ProofGenerationStep
 			}
-		}
-	)
-	| (
-		{
-			type: 'createClaimOnAvsStep'
-			step: CreateClaimOnAvsStep
 		}
 	)
 	| (

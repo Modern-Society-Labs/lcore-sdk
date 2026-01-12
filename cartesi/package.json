@@ -8,6 +8,7 @@
     "ethers": "^6.13.4",
     "openapi-fetch": "^0.7",
     "sql.js": "^1.13.0",
+    "tweetnacl": "^1.0.3",
     "viem": "^1"
   },
   "devDependencies": {
@@ -27,14 +28,16 @@
     "vitest": "^0.34"
   },
   "scripts": {
-    "build": "run-s compile compile:lcore compile:test-server",
+    "build": "run-s compile compile:lcore compile:rollup-server postbuild",
+    "postbuild": "cp node_modules/sql.js/dist/sql-wasm.wasm dist/",
     "codegen": "echo 'Schema already defined in src/schema.d.ts'",
     "compile": "tsc && esbuild ./src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node20",
     "compile:lcore": "esbuild ./src/lcore-main.ts --bundle --outfile=dist/lcore-main.js --platform=node --target=node20",
-    "compile:test-server": "esbuild ./src/test-rollup-server.ts --bundle --outfile=dist/test-rollup-server.js --platform=node --target=node20",
+    "compile:rollup-server": "esbuild ./src/rollup-server.ts --bundle --outfile=dist/rollup-server.js --platform=node --target=node20",
     "start": "ROLLUP_HTTP_SERVER_URL=\"http://127.0.0.1:5004\" ts-node src/index.ts",
     "start:lcore": "ROLLUP_HTTP_SERVER_URL=\"http://127.0.0.1:5004\" ts-node src/lcore-main.ts",
-    "start:test-server": "ts-node src/test-rollup-server.ts",
+    "start:rollup-server": "ts-node src/rollup-server.ts",
+    "start:servers": "node dist/rollup-server.js & sleep 2 && ROLLUP_HTTP_SERVER_URL=http://127.0.0.1:5004 node dist/lcore-main.js",
     "test": "jest --testPathIgnorePatterns='e2e'",
     "test:watch": "jest --watch --testPathIgnorePatterns='e2e'",
     "test:e2e": "jest --testMatch='**/*e2e*.test.ts' --testTimeout=60000 --runInBand",

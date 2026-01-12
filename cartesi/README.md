@@ -97,6 +97,41 @@ Configure via environment variables:
 
 See the "Adding a New Data Source" section in ARCHITECTURE.md for a detailed walkthrough.
 
+## Testing
+
+### Unit Tests
+
+```bash
+npm test           # Run unit tests
+npm run test:watch # Watch mode
+```
+
+### E2E Tests
+
+E2E tests verify the full attestor-to-Cartesi flow using a mock rollup server.
+
+```bash
+# Build the project first
+npm run build
+
+# Terminal 1: Start the E2E test servers
+npm run start:e2e-servers
+
+# Terminal 2: Run E2E tests
+npm run test:e2e
+```
+
+**E2E Test Coverage (116 tests):**
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `e2e.coingecko.test.ts` | 16 | Real-world CoinGecko price attestation flow |
+| `e2e.attestation.test.ts` | 18 | Attestation ingestion, queries, revocation |
+| `e2e.discovery.test.ts` | 18 | Privacy-preserving bucket queries |
+| `e2e.access-control.test.ts` | 22 | Grant/revoke data access |
+| `e2e.schema.test.ts` | 20 | Provider schema lifecycle |
+| `e2e.integration.test.ts` | 22 | Full DeFi attestation workflow |
+
 ## API
 
 ### Advance Requests (State Changes)
