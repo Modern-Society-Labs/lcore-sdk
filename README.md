@@ -157,6 +157,12 @@ ROLLUP_HTTP_SERVER_URL=http://localhost:5004
 | `approval` | Multi-party approval workflows |
 | `stats` | Aggregate statistics |
 
+## Documentation
+
+See [attestor/docs/](attestor/docs/) for setup guides:
+- [QUICKSTART.md](attestor/docs/QUICKSTART.md) - 15-minute deployment guide
+- [EXTERNAL_SERVICES.md](attestor/docs/EXTERNAL_SERVICES.md) - EigenCloud & Cartesi setup
+
 ## Related Projects
 
 | Repository | Description |
