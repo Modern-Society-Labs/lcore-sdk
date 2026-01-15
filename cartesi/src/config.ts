@@ -69,10 +69,15 @@ export function getComputationLookbackMonths(): number {
 
 /**
  * Secret key for proof verification.
- * IMPORTANT: Set PROOF_SIGNING_KEY in production!
+ * REQUIRED: Set PROOF_SIGNING_KEY environment variable!
+ * Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
  */
 export function getProofSigningKey(): string {
-  return process.env.PROOF_SIGNING_KEY || 'development-key-replace-in-production';
+  const key = process.env.PROOF_SIGNING_KEY;
+  if (!key) {
+    throw new Error('PROOF_SIGNING_KEY environment variable is required. Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  }
+  return key;
 }
 
 /**
@@ -94,9 +99,16 @@ export function getProofExpirationMs(): number {
 
 /**
  * Get the rollup HTTP server URL.
+ * In production Cartesi environment, this is set by the Cartesi runtime.
+ * For local development, set ROLLUP_HTTP_SERVER_URL environment variable.
  */
 export function getRollupServerUrl(): string {
-  return process.env.ROLLUP_HTTP_SERVER_URL || 'http://127.0.0.1:5004';
+  const url = process.env.ROLLUP_HTTP_SERVER_URL;
+  if (!url) {
+    console.warn('[CONFIG] ROLLUP_HTTP_SERVER_URL not set - using default http://127.0.0.1:5004');
+    return 'http://127.0.0.1:5004';
+  }
+  return url;
 }
 
 /**
