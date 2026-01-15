@@ -19,6 +19,21 @@ export type TaskStatus = 'pending' | 'completed' | 'expired' | 'challenged' | 's
 export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical'
 
 // Individual table types for direct use
+
+export interface AuthNonce {
+	wallet_address: string
+	nonce: string
+	expires_at: string
+	created_at: string
+}
+
+export interface AuthNonceInsert {
+	wallet_address: string
+	nonce: string
+	expires_at: string
+	created_at?: string
+}
+
 export interface Admin {
 	id: string
 	wallet_address: string
@@ -62,22 +77,26 @@ export interface AdminSession {
 	id: string
 	admin_id: string
 	token_hash: string
+	hash_version: number
 	ip_address: string | null
 	user_agent: string | null
 	expires_at: string
 	created_at: string
 	revoked_at: string | null
+	last_refresh_at: string | null
 }
 
 export interface AdminSessionInsert {
 	id?: string
 	admin_id: string
 	token_hash: string
+	hash_version?: number
 	ip_address?: string | null
 	user_agent?: string | null
 	expires_at: string
 	created_at?: string
 	revoked_at?: string | null
+	last_refresh_at?: string | null
 }
 
 export interface ApiKey {
@@ -86,6 +105,7 @@ export interface ApiKey {
 	name: string
 	key_prefix: string
 	key_hash: string
+	hash_version: number
 	permissions: Json
 	rate_limit_per_minute: number
 	last_used_at: string | null
@@ -100,6 +120,7 @@ export interface ApiKeyInsert {
 	name: string
 	key_prefix: string
 	key_hash: string
+	hash_version?: number
 	permissions?: Json
 	rate_limit_per_minute?: number
 	last_used_at?: string | null
@@ -276,6 +297,12 @@ export interface FeatureFlag {
 export interface Database {
 	public: {
 		Tables: {
+			auth_nonces: {
+				Row: AuthNonce
+				Insert: AuthNonceInsert
+				Update: Partial<AuthNonce>
+				Relationships: []
+			}
 			admins: {
 				Row: Admin
 				Insert: AdminInsert
@@ -348,13 +375,13 @@ export interface Database {
 			}
 			indexed_tasks: {
 				Row: IndexedTask
-				Insert: Partial<IndexedTask> & { task_index: number; task_hash: string; owner_address: string }
+				Insert: Partial<IndexedTask> & { task_index: number, task_hash: string, owner_address: string }
 				Update: Partial<IndexedTask>
 				Relationships: []
 			}
 			indexed_slashing_events: {
 				Row: IndexedSlashingEvent
-				Insert: Partial<IndexedSlashingEvent> & { task_index: number; operator_address: string }
+				Insert: Partial<IndexedSlashingEvent> & { task_index: number, operator_address: string }
 				Update: Partial<IndexedSlashingEvent>
 				Relationships: []
 			}
@@ -366,7 +393,7 @@ export interface Database {
 			}
 			system_config: {
 				Row: SystemConfig
-				Insert: Partial<SystemConfig> & { key: string; value: Json }
+				Insert: Partial<SystemConfig> & { key: string, value: Json }
 				Update: Partial<SystemConfig>
 				Relationships: []
 			}

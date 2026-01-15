@@ -35,16 +35,28 @@ CREATE TABLE admins (
 CREATE INDEX idx_admins_wallet ON admins(wallet_address);
 CREATE INDEX idx_admins_email ON admins(email);
 
+-- Auth nonces for wallet signature verification (multi-node safe)
+CREATE TABLE auth_nonces (
+  wallet_address TEXT PRIMARY KEY,
+  nonce TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_auth_nonces_expires ON auth_nonces(expires_at);
+
 -- Admin sessions (for JWT validation and revocation)
 CREATE TABLE admin_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   admin_id UUID NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
-  token_hash VARCHAR(64) NOT NULL,
+  token_hash VARCHAR(128) NOT NULL, -- Increased for bcrypt hashes
+  hash_version INT DEFAULT 1, -- 1 = HMAC-SHA256, 2 = bcrypt
   ip_address INET,
   user_agent TEXT,
   expires_at TIMESTAMPTZ NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  revoked_at TIMESTAMPTZ
+  revoked_at TIMESTAMPTZ,
+  last_refresh_at TIMESTAMPTZ -- For atomic refresh locking
 );
 
 CREATE INDEX idx_admin_sessions_admin ON admin_sessions(admin_id);
@@ -56,7 +68,8 @@ CREATE TABLE api_keys (
   admin_id UUID NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
   name VARCHAR(100) NOT NULL,
   key_prefix VARCHAR(8) NOT NULL, -- First 8 chars for identification
-  key_hash VARCHAR(64) NOT NULL,  -- SHA256 hash of full key
+  key_hash VARCHAR(128) NOT NULL, -- Increased for bcrypt hashes
+  hash_version INT DEFAULT 1, -- 1 = HMAC-SHA256, 2 = bcrypt
   permissions JSONB DEFAULT '[]'::jsonb,
   rate_limit_per_minute INT DEFAULT 60,
   last_used_at TIMESTAMPTZ,

@@ -8,14 +8,14 @@
  * 4. On approval, operator is whitelisted on-chain
  */
 
+import { isValidAddress, normalizeAddress } from '#src/api/auth/wallet.ts'
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type {
+	ApplicationStatus,
 	OperatorApplication,
 	OperatorApplicationInsert,
-	ApplicationStatus,
 	OperatorProfile,
 } from '#src/db/types.ts'
-import { isValidAddress, normalizeAddress } from '#src/api/auth/wallet.ts'
 
 export interface ApplicationInfo {
 	id: string
@@ -84,7 +84,7 @@ function toApplicationInfo(app: OperatorApplication): ApplicationInfo {
  */
 export async function submitApplication(
 	params: SubmitApplicationParams
-): Promise<{ success: true; application: ApplicationInfo } | { success: false; error: string }> {
+): Promise<{ success: true, application: ApplicationInfo } | { success: false, error: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -93,7 +93,7 @@ export async function submitApplication(
 		return { success: false, error: 'Invalid wallet address format' }
 	}
 
-	if(!params.contactEmail || !params.contactEmail.includes('@')) {
+	if(!params.contactEmail?.includes('@')) {
 		return { success: false, error: 'Valid contact email is required' }
 	}
 
@@ -107,12 +107,13 @@ export async function submitApplication(
 		.eq('wallet_address', normalizedAddress)
 		.single()
 
-	const existingApp = existing as { id: string; status: ApplicationStatus } | null
+	const existingApp = existing as { id: string, status: ApplicationStatus } | null
 
 	if(existingApp) {
 		if(existingApp.status === 'pending' || existingApp.status === 'under_review') {
 			return { success: false, error: 'An application is already pending for this wallet address' }
 		}
+
 		if(existingApp.status === 'approved') {
 			return { success: false, error: 'This wallet address has already been approved' }
 		}
@@ -126,7 +127,7 @@ export async function submitApplication(
 		.eq('wallet_address', normalizedAddress)
 		.single()
 
-	const operator = operatorData as { wallet_address: string; is_whitelisted: boolean } | null
+	const operator = operatorData as { wallet_address: string, is_whitelisted: boolean } | null
 
 	if(operator?.is_whitelisted) {
 		return { success: false, error: 'This wallet address is already whitelisted as an operator' }
@@ -224,7 +225,7 @@ export async function listApplications(params: {
 	status?: ApplicationStatus
 	limit?: number
 	offset?: number
-}): Promise<{ applications: ApplicationInfo[]; total: number }> {
+}): Promise<{ applications: ApplicationInfo[], total: number }> {
 	if(!isDatabaseConfigured()) {
 		return { applications: [], total: 0 }
 	}
@@ -264,7 +265,7 @@ export async function listApplications(params: {
 export async function startReview(
 	applicationId: string,
 	reviewerId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -309,7 +310,7 @@ export async function startReview(
  */
 export async function reviewApplication(
 	params: ReviewApplicationParams
-): Promise<{ success: true; application: ApplicationInfo } | { success: false; error: string }> {
+): Promise<{ success: true, application: ApplicationInfo } | { success: false, error: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -381,7 +382,7 @@ export async function reviewApplication(
 export async function withdrawApplication(
 	applicationId: string,
 	walletAddress: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -396,7 +397,7 @@ export async function withdrawApplication(
 		.eq('id', applicationId)
 		.single()
 
-	const app = appData as { wallet_address: string; status: ApplicationStatus } | null
+	const app = appData as { wallet_address: string, status: ApplicationStatus } | null
 
 	if(!app) {
 		return { success: false, error: 'Application not found' }
@@ -458,22 +459,22 @@ export async function getApplicationStats(): Promise<{
 	}
 
 	for(const app of apps) {
-		switch(app.status) {
-			case 'pending':
-				stats.pending++
-				break
-			case 'under_review':
-				stats.underReview++
-				break
-			case 'approved':
-				stats.approved++
-				break
-			case 'rejected':
-				stats.rejected++
-				break
-			case 'withdrawn':
-				stats.withdrawn++
-				break
+		switch (app.status) {
+		case 'pending':
+			stats.pending++
+			break
+		case 'under_review':
+			stats.underReview++
+			break
+		case 'approved':
+			stats.approved++
+			break
+		case 'rejected':
+			stats.rejected++
+			break
+		case 'withdrawn':
+			stats.withdrawn++
+			break
 		}
 	}
 

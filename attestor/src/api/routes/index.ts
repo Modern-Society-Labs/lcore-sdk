@@ -5,14 +5,14 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import { handleAuthRoute } from './auth.ts'
-import { handleAdminsRoute } from './admins.ts'
-import { handleApiKeysRoute } from './api-keys.ts'
-import { handleAuditRoute } from './audit.ts'
-import { handleOperatorsRoute } from './operators.ts'
-import { handleStatsRoute } from './stats.ts'
-import { handleLCoreRoute } from './lcore.ts'
-import { sendError, handleCorsPrelight, setCorsHeaders } from '../utils/http.ts'
+import { handleAdminsRoute } from 'src/api/routes/admins.ts'
+import { handleApiKeysRoute } from 'src/api/routes/api-keys.ts'
+import { handleAuditRoute } from 'src/api/routes/audit.ts'
+import { handleAuthRoute } from 'src/api/routes/auth.ts'
+import { handleLCoreRoute } from 'src/api/routes/lcore.ts'
+import { handleOperatorsRoute } from 'src/api/routes/operators.ts'
+import { handleStatsRoute } from 'src/api/routes/stats.ts'
+import { handleCorsPrelight, sendError, setCorsHeaders } from 'src/api/utils/http.ts'
 
 /**
  * Main API router

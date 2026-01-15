@@ -6,6 +6,7 @@
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
+
 import { getEnvVariable } from '#src/utils/env.ts'
 
 const JWT_ALGORITHM = 'HS256'
@@ -52,6 +53,9 @@ function base64UrlDecode(str: string): string {
 	return Buffer.from(base64 + padding, 'base64').toString('utf8')
 }
 
+/** Flag to track if entropy warning has been shown */
+let entropyWarningShown = false
+
 /**
  * Get JWT secret from environment
  */
@@ -59,6 +63,16 @@ function getJWTSecret(): string {
 	const secret = getEnvVariable('JWT_SECRET')
 	if(!secret || secret.length < 32) {
 		throw new Error('JWT_SECRET must be at least 32 characters')
+	}
+
+	// Entropy warning (don't break existing deployments, just warn once)
+	if(!entropyWarningShown) {
+		const uniqueChars = new Set(secret).size
+		if(uniqueChars < 16) {
+			console.warn('[SECURITY] JWT_SECRET has low entropy (%d unique characters). Consider using a stronger secret with more character variety.', uniqueChars)
+		}
+
+		entropyWarningShown = true
 	}
 
 	return secret
@@ -167,9 +181,105 @@ export function generateSessionId(): string {
 
 /**
  * Hash a session token for storage (don't store raw tokens)
+ * This is v1 (HMAC-SHA256) - kept for backwards compatibility
  */
 export function hashSessionToken(token: string): string {
 	const hash = createHmac('sha256', getJWTSecret())
 	hash.update(token)
 	return hash.digest('hex')
+}
+
+/**
+ * Hash version constants
+ */
+export const HASH_VERSION = {
+	HMAC_SHA256: 1,
+	BCRYPT: 2,
+} as const
+
+/** Bcrypt interface for dynamic import */
+interface BcryptModule {
+	hash: (data: string, rounds: number) => Promise<string>
+	compare: (data: string, encrypted: string) => Promise<boolean>
+}
+
+/** Cached bcrypt module (null = not checked yet, undefined = not available) */
+let bcryptModule: BcryptModule | undefined | null = null
+
+/**
+ * Try to load bcrypt module
+ */
+async function tryLoadBcrypt(): Promise<BcryptModule | undefined> {
+	if(bcryptModule === null) {
+		try {
+			// Dynamic import - bcrypt is an optional dependency
+			// Use string variable to prevent TypeScript from resolving the module at compile time
+			const moduleName = 'bcrypt'
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			bcryptModule = await import(/* webpackIgnore: true */ moduleName) as BcryptModule
+		} catch{
+			bcryptModule = undefined
+		}
+	}
+
+	return bcryptModule
+}
+
+/**
+ * Hash a session token using v2 (bcrypt) for new sessions.
+ * Provides better security with per-hash salt.
+ *
+ * Note: Requires bcrypt package to be installed:
+ * npm install bcrypt @types/bcrypt
+ *
+ * Until bcrypt is installed, this falls back to v1 hash with a warning.
+ */
+export async function hashSessionTokenV2(token: string): Promise<{ hash: string, version: number }> {
+	const bcrypt = await tryLoadBcrypt()
+	if(bcrypt) {
+		const hash = await bcrypt.hash(token, 12)
+		return { hash, version: HASH_VERSION.BCRYPT }
+	}
+
+	// Fallback to v1 if bcrypt not installed
+	console.warn('[SECURITY] bcrypt not available, using HMAC-SHA256 for token hash. Install bcrypt for better security.')
+	return { hash: hashSessionToken(token), version: HASH_VERSION.HMAC_SHA256 }
+}
+
+/**
+ * Verify a session token against a stored hash.
+ * Supports both v1 (HMAC-SHA256) and v2 (bcrypt) hashes.
+ *
+ * @param token - The raw session token to verify
+ * @param storedHash - The hash stored in the database
+ * @param hashVersion - The hash version (1 = HMAC-SHA256, 2 = bcrypt)
+ * @returns true if the token matches the hash
+ */
+export async function verifySessionTokenHash(
+	token: string,
+	storedHash: string,
+	hashVersion: number
+): Promise<boolean> {
+	if(hashVersion === HASH_VERSION.BCRYPT) {
+		const bcrypt = await tryLoadBcrypt()
+		if(bcrypt) {
+			return bcrypt.compare(token, storedHash)
+		}
+
+		// bcrypt not available, can't verify v2 hash
+		return false
+	}
+
+	// v1: HMAC-SHA256 comparison
+	const computedHash = hashSessionToken(token)
+
+	// Use timing-safe comparison
+	const expectedBuf = Buffer.from(storedHash)
+	const actualBuf = Buffer.from(computedHash)
+
+	if(expectedBuf.length !== actualBuf.length) {
+		return false
+	}
+
+	return timingSafeEqual(expectedBuf, actualBuf)
 }

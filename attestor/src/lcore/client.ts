@@ -2,18 +2,72 @@
  * L{CORE} SDK Client
  *
  * Client for submitting attestations to the L{CORE} Cartesi rollup layer.
- * This runs embedded in the attestor container and communicates with
- * the local test-rollup-server and lcore-main processes.
+ * Supports production mode (on-chain InputBox + node inspect API).
  *
  * PRIVACY NOTE: Responses from L{CORE} may be encrypted. This client
  * automatically decrypts responses using the admin private key stored in TEE.
  */
 
-import { getEnvVariable } from '#src/utils/env.ts'
-import { processLCoreResponse, type DecryptionProof } from './encryption.ts'
+import { ethers, Wallet } from 'ethers'
+import { type DecryptionProof, processLCoreResponse } from 'src/lcore/encryption.ts'
 
-// Default to local embedded rollup server
-const LCORE_ROLLUP_URL = getEnvVariable('LCORE_ROLLUP_URL') || 'http://127.0.0.1:5004'
+import { getEnvVariable } from '#src/utils/env.ts'
+
+// Production Cartesi node configuration
+const LCORE_NODE_URL = getEnvVariable('LCORE_NODE_URL') || 'http://127.0.0.1:10000'
+const LCORE_RPC_URL = getEnvVariable('LCORE_RPC_URL') || ''
+const LCORE_DAPP_ADDRESS = getEnvVariable('LCORE_DAPP_ADDRESS') || ''
+const LCORE_INPUTBOX_ADDRESS = getEnvVariable('LCORE_INPUTBOX_ADDRESS') || '0x59b22D57D4f067708AB0c00552767405926dc768'
+
+// InputBox ABI (minimal)
+const INPUT_BOX_ABI = [
+	'function addInput(address _dapp, bytes calldata _input) external returns (bytes32)'
+]
+
+// Wallet for signing transactions (from MNEMONIC env var injected by EigenCloud)
+let _wallet: Wallet | null = null
+let _provider: ethers.providers.JsonRpcProvider | null = null
+
+function getProvider(): ethers.providers.JsonRpcProvider {
+	if(!_provider) {
+		if(!LCORE_RPC_URL) {
+			throw new Error('LCORE_RPC_URL is required for production mode')
+		}
+
+		_provider = new ethers.providers.JsonRpcProvider(LCORE_RPC_URL)
+	}
+
+	return _provider
+}
+
+function getWallet(): Wallet {
+	if(!_wallet) {
+		const mnemonic = getEnvVariable('MNEMONIC')
+		if(!mnemonic) {
+			throw new Error('MNEMONIC is required for signing transactions')
+		}
+
+		_wallet = Wallet.fromMnemonic(mnemonic).connect(getProvider())
+	}
+
+	return _wallet
+}
+
+/**
+ * Hex encode data for Cartesi input
+ */
+function hexEncode(data: unknown): string {
+	const jsonStr = JSON.stringify(data)
+	return '0x' + Buffer.from(jsonStr, 'utf-8').toString('hex')
+}
+
+/**
+ * Hex decode Cartesi output
+ */
+function hexDecode(hex: string): unknown {
+	const str = Buffer.from(hex.slice(2), 'hex').toString('utf-8')
+	return JSON.parse(str)
+}
 
 interface IngestAttestationInput {
 	id: string
@@ -24,15 +78,8 @@ interface IngestAttestationInput {
 	validFrom: number
 	validUntil?: number
 	teeSignature: string
-	buckets: Array<{ key: string; value: string }>
-	data: Array<{ key: string; value: string; encryptionKeyId: string }>
-}
-
-interface LCoreResponse {
-	status: 'accept' | 'reject'
-	notices: Array<{ payload: string; payloadJson: unknown }>
-	reports: Array<{ payload: string; payloadJson: unknown }>
-	vouchers: Array<{ destination: string; payload: string }>
+	buckets: Array<{ key: string, value: string }>
+	data: Array<{ key: string, value: string, encryptionKeyId: string }>
 }
 
 interface AttestationResult {
@@ -52,10 +99,12 @@ interface AttestationResult {
  * This is called after the attestor creates and signs a claim,
  * forwarding it to the Cartesi layer for deterministic storage
  * and privacy-preserving queries.
+ *
+ * Uses the InputBox contract to submit on-chain transactions.
  */
 export async function submitAttestationToLCore(
 	input: IngestAttestationInput,
-	senderAddress: string
+	_senderAddress: string
 ): Promise<AttestationResult> {
 	const payload = {
 		action: 'ingest_attestation',
@@ -76,53 +125,39 @@ export async function submitAttestationToLCore(
 	}
 
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/input/advance`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				sender: senderAddress,
-				payload,
-			}),
-		})
+		if(!LCORE_DAPP_ADDRESS) {
+			throw new Error('LCORE_DAPP_ADDRESS is required')
+		}
 
-		if (!response.ok) {
+		const wallet = getWallet()
+		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
+		const inputData = hexEncode(payload)
+
+		// Submit to InputBox contract
+		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
+		const receipt = await tx.wait()
+
+		if(!receipt) {
 			return {
 				success: false,
-				error: `HTTP ${response.status}: ${response.statusText}`,
+				error: 'Transaction failed - no receipt',
 			}
 		}
 
-		const result = await response.json() as LCoreResponse
-
-		if (result.status === 'reject') {
-			// Check reports for error details
-			const errorReport = result.reports.find(r =>
-				r.payloadJson && typeof r.payloadJson === 'object' && 'error' in (r.payloadJson as object)
-			)
-			const errorPayload = errorReport?.payloadJson as { error?: string; details?: string } | undefined
-
-			return {
-				success: false,
-				error: errorPayload?.error || 'Request rejected',
-				details: errorPayload?.details,
-			}
-		}
-
-		// Extract result from notice
-		const notice = result.notices[0]?.payloadJson as AttestationResult | undefined
-
+		// Transaction submitted successfully
+		// Note: We return success immediately after on-chain confirmation
+		// The Cartesi node will process the input asynchronously
 		return {
-			success: notice?.success ?? true,
-			attestationId: notice?.attestationId,
-			attestationHash: notice?.attestationHash,
-			domain: notice?.domain,
-			provider: notice?.provider,
-			flowType: notice?.flowType,
+			success: true,
+			attestationId: input.id,
+			attestationHash: input.attestationHash,
+			provider: input.provider,
+			flowType: input.flowType,
 		}
-	} catch (error) {
+	} catch(error) {
 		return {
 			success: false,
-			error: 'Failed to connect to L{CORE} rollup',
+			error: 'Failed to submit to L{CORE} InputBox',
 			details: error instanceof Error ? error.message : String(error),
 		}
 	}
@@ -155,28 +190,33 @@ export interface LCoreQueryError {
  * proof of correct decryption.
  */
 export async function queryAttestationFromLCore<T = unknown>(
-	params: { id?: string; hash?: string }
+	params: { id?: string, hash?: string }
 ): Promise<LCoreQueryResult<T> | LCoreQueryError> {
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/input/inspect`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				type: 'attestation',
-				params,
-			}),
+		// Build inspect query
+		const query = { type: 'attestation', params }
+		const hexPayload = hexEncode(query).slice(2) // Remove 0x prefix for URL
+
+		const response = await fetch(`${LCORE_NODE_URL}/inspect/${hexPayload}`, {
+			method: 'GET',
 		})
 
-		if (!response.ok) {
+		if(!response.ok) {
 			return { error: `HTTP ${response.status}: ${response.statusText}` }
 		}
 
-		const result = await response.json() as { reports: Array<{ payloadJson: unknown }> }
-		const rawResponse = result.reports[0]?.payloadJson
+		const result = await response.json() as { reports?: Array<{ payload: string }> }
+
+		if(!result.reports || result.reports.length === 0) {
+			return { error: 'No reports returned' }
+		}
+
+		// Decode hex payload from Cartesi node
+		const rawResponse = hexDecode(result.reports[0].payload)
 
 		// Process response (decrypt if encrypted, generate proof)
 		const processed = await processLCoreResponse<T>(rawResponse)
-		if ('error' in processed) {
+		if('error' in processed) {
 			return { error: processed.error }
 		}
 
@@ -185,7 +225,7 @@ export async function queryAttestationFromLCore<T = unknown>(
 			wasEncrypted: processed.wasEncrypted,
 			proof: processed.proof,
 		}
-	} catch (error) {
+	} catch(error) {
 		return {
 			error: 'Failed to query L{CORE}',
 			details: error instanceof Error ? error.message : String(error),
@@ -194,16 +234,19 @@ export async function queryAttestationFromLCore<T = unknown>(
 }
 
 /**
- * Check if L{CORE} rollup server is healthy.
+ * Check if L{CORE} Cartesi node is healthy.
  */
 export async function checkLCoreHealth(): Promise<boolean> {
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/health`, {
-			method: 'GET',
+		// Check if node responds to GraphQL
+		const response = await fetch(`${LCORE_NODE_URL}/graphql`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ query: '{ inputs { totalCount } }' }),
 			signal: AbortSignal.timeout(5000),
 		})
 		return response.ok
-	} catch {
+	} catch{
 		return false
 	}
 }
@@ -213,11 +256,28 @@ export async function checkLCoreHealth(): Promise<boolean> {
  */
 export async function getLCoreStatus(): Promise<unknown> {
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/status`, {
-			method: 'GET',
+		const response = await fetch(`${LCORE_NODE_URL}/graphql`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				query: `{
+					inputs { totalCount }
+				}`
+			}),
 		})
-		return response.json()
-	} catch (error) {
+
+		if(!response.ok) {
+			return { status: 'error', error: `HTTP ${response.status}` }
+		}
+
+		const data = await response.json()
+		return {
+			status: 'running',
+			nodeUrl: LCORE_NODE_URL,
+			dappAddress: LCORE_DAPP_ADDRESS,
+			...data,
+		}
+	} catch(error) {
 		return {
 			status: 'unavailable',
 			error: error instanceof Error ? error.message : String(error),

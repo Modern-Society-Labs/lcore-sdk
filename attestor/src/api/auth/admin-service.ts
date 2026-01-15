@@ -2,11 +2,12 @@
  * Admin service for managing admin users and sessions
  */
 
+import type { JWTPayload, SessionToken } from 'src/api/auth/jwt.ts'
+import { createJWT, generateSessionId, hashSessionToken } from 'src/api/auth/jwt.ts'
+import { generateNonce, isValidAddress, normalizeAddress, verifyWalletSignature } from 'src/api/auth/wallet.ts'
+
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
-import type { Admin, AdminRole, AdminSessionInsert, AdminInsert } from '#src/db/types.ts'
-import { createJWT, hashSessionToken, generateSessionId } from './jwt.ts'
-import type { JWTPayload, SessionToken } from './jwt.ts'
-import { generateNonce, verifyWalletSignature, isValidAddress, normalizeAddress } from './wallet.ts'
+import type { Admin, AdminInsert, AdminRole, AdminSessionInsert } from '#src/db/types.ts'
 
 export interface AdminInfo {
 	id: string
@@ -43,10 +44,12 @@ export async function requestLoginNonce(
 	}
 
 	const normalizedAddress = normalizeAddress(walletAddress)
-	const { nonce, expiresAt } = generateNonce(normalizedAddress)
 
-	// Generate the message to be signed
-	const message = `Locale L{CORE} Admin Authentication
+	try {
+		const { nonce, expiresAt } = await generateNonce(normalizedAddress)
+
+		// Generate the message to be signed
+		const message = `Locale L{CORE} Admin Authentication
 
 Domain: ${domain}
 Address: ${normalizedAddress}
@@ -57,7 +60,10 @@ Expires At: ${expiresAt.toISOString()}
 Sign this message to authenticate as an admin.
 This signature will not trigger any blockchain transaction.`
 
-	return { nonce, expiresAt, message }
+		return { nonce, expiresAt, message }
+	} catch(err) {
+		return { error: err instanceof Error ? err.message : 'Failed to generate nonce' }
+	}
 }
 
 /**
@@ -120,6 +126,7 @@ export async function loginWithWallet(params: {
 	const sessionInsert: AdminSessionInsert = {
 		admin_id: admin.id,
 		token_hash: tokenHash,
+		hash_version: 1, // 1 = HMAC-SHA256, 2 = bcrypt (future)
 		ip_address: params.ipAddress || null,
 		user_agent: params.userAgent || null,
 		expires_at: session.expiresAt.toISOString(),
@@ -190,7 +197,7 @@ export async function registerAdmin(params: {
 	displayName?: string
 	role: AdminRole
 	createdBy: string
-}): Promise<{ success: true; admin: AdminInfo } | { success: false; error: string }> {
+}): Promise<{ success: true, admin: AdminInfo } | { success: false, error: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -254,7 +261,7 @@ export async function updateAdminRole(
 	adminId: string,
 	newRole: AdminRole,
 	updatedBy: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -283,7 +290,7 @@ export async function updateAdminRole(
  */
 export async function revokeSession(
 	tokenHash: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -306,7 +313,7 @@ export async function revokeSession(
  */
 export async function revokeAllSessions(
 	adminId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -358,7 +365,7 @@ export async function listAdmins(): Promise<AdminInfo[]> {
 export async function deleteAdmin(
 	adminId: string,
 	deletedBy: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}

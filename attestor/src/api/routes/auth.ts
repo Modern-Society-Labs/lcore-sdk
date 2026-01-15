@@ -9,18 +9,20 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { getClientInfo, parseJsonBody, sendError, sendJson } from 'src/api/utils/http.ts'
+
+import type { AuthenticatedRequest } from '#src/api/auth/index.ts'
 import {
-	requestLoginNonce,
-	loginWithWallet,
-	getAdminById,
-	revokeSession,
-	refreshJWT,
-	hashSessionToken,
 	auditFromRequest,
 	createAuthMiddleware,
+	getAdminById,
+	hashSessionToken,
+	loginWithWallet,
+	refreshJWT,
+	requestLoginNonce,
+	revokeSession,
 } from '#src/api/auth/index.ts'
-import type { AuthenticatedRequest } from '#src/api/auth/index.ts'
-import { parseJsonBody, sendJson, sendError, getClientInfo } from '../utils/http.ts'
+import { checkRateLimit, getRateLimitHeaders, resetRateLimit } from '#src/api/auth/rate-limit.ts'
 
 /**
  * POST /api/auth/nonce
@@ -62,6 +64,23 @@ export async function handleLogin(
 	req: IncomingMessage,
 	res: ServerResponse
 ): Promise<void> {
+	const { ipAddress, userAgent } = getClientInfo(req)
+
+	// Rate limit by IP address to prevent brute force attacks
+	const rateLimitId = `login:${ipAddress || 'unknown'}`
+	const rateLimit = checkRateLimit(rateLimitId, 5, 15 * 60 * 1000) // 5 attempts per 15 minutes
+
+	// Add rate limit headers to response
+	const rateLimitHeaders = getRateLimitHeaders(rateLimit)
+	for(const [key, value] of Object.entries(rateLimitHeaders)) {
+		res.setHeader(key, value)
+	}
+
+	if(!rateLimit.allowed) {
+		res.setHeader('Retry-After', String(Math.ceil((rateLimit.resetAt.getTime() - Date.now()) / 1000)))
+		return sendError(res, 429, 'Too many login attempts. Please try again later.')
+	}
+
 	const body = await parseJsonBody<{
 		walletAddress: string
 		signature: string
@@ -76,8 +95,6 @@ export async function handleLogin(
 	const protocol = req.headers['x-forwarded-proto'] || 'http'
 	const domain = `${protocol}://${host}`
 
-	const { ipAddress, userAgent } = getClientInfo(req)
-
 	const result = await loginWithWallet({
 		walletAddress: body.walletAddress,
 		signature: body.signature,
@@ -89,6 +106,9 @@ export async function handleLogin(
 	if(!result.success) {
 		return sendError(res, 401, result.error || 'Login failed')
 	}
+
+	// Reset rate limit on successful login
+	resetRateLimit(rateLimitId)
 
 	// Log the login
 	if(result.admin && result.session) {
@@ -123,8 +143,8 @@ export async function handleLogout(
 	const auth = createAuthMiddleware()
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	// Get the token from Authorization header
 	const authHeader = req.headers.authorization
@@ -151,8 +171,8 @@ export async function handleGetMe(
 	const auth = createAuthMiddleware()
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const admin = await getAdminById(authReq.admin.sub)
 	if(!admin) {
@@ -167,7 +187,7 @@ export async function handleGetMe(
 
 /**
  * POST /api/auth/refresh
- * Refresh session token
+ * Refresh session token with atomic locking to prevent race conditions
  */
 export async function handleRefresh(
 	req: IncomingMessage,
@@ -176,16 +196,78 @@ export async function handleRefresh(
 	const auth = createAuthMiddleware()
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
-	// Create new token
-	const newSession = refreshJWT(authReq.admin)
+	// Get the current token to find the session
+	const authHeader = req.headers.authorization
+	if(!authHeader?.startsWith('Bearer ')) {
+		return sendError(res, 401, 'No token provided')
+	}
 
-	sendJson(res, {
-		token: newSession.token,
-		expiresAt: newSession.expiresAt.toISOString(),
-	})
+	const currentToken = authHeader.slice(7)
+	const currentTokenHash = hashSessionToken(currentToken)
+
+	// Try to acquire refresh lock atomically
+	// Only proceed if last_refresh_at is null (not currently being refreshed)
+	const { ipAddress, userAgent } = getClientInfo(req)
+
+	// Import Supabase client
+	const { getSupabaseClient, isDatabaseConfigured } = await import('#src/db/client.ts')
+
+	if(isDatabaseConfigured()) {
+		const supabase = getSupabaseClient()
+
+		// Atomic update to acquire lock - only succeeds if not already refreshing
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const { data: lockResult, error: lockError } = await (supabase.from('admin_sessions') as any)
+			.update({ last_refresh_at: new Date().toISOString() })
+			.eq('token_hash', currentTokenHash)
+			.is('last_refresh_at', null)
+			.select('id')
+			.single()
+
+		if(lockError || !lockResult) {
+			// Another refresh is in progress or session not found
+			// Return success with a message to retry
+			return sendError(res, 409, 'Token refresh already in progress. Please retry.')
+		}
+
+		// Create new token
+		const newSession = refreshJWT(authReq.admin)
+		const newTokenHash = hashSessionToken(newSession.token)
+
+		// Create new session record
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		await (supabase.from('admin_sessions') as any)
+			.insert({
+				admin_id: authReq.admin.sub,
+				token_hash: newTokenHash,
+				hash_version: 1,
+				ip_address: ipAddress,
+				user_agent: userAgent,
+				expires_at: newSession.expiresAt.toISOString(),
+			})
+
+		// Revoke old session
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		await (supabase.from('admin_sessions') as any)
+			.update({ revoked_at: new Date().toISOString() })
+			.eq('token_hash', currentTokenHash)
+
+		sendJson(res, {
+			token: newSession.token,
+			expiresAt: newSession.expiresAt.toISOString(),
+		})
+	} else {
+		// No database - just create new token (stateless mode)
+		const newSession = refreshJWT(authReq.admin)
+
+		sendJson(res, {
+			token: newSession.token,
+			expiresAt: newSession.expiresAt.toISOString(),
+		})
+	}
 }
 
 /**

@@ -11,21 +11,67 @@
  * GET    /api/lcore/health                 - Health check for L{CORE}
  */
 
+import { ethers, Wallet } from 'ethers'
 import type { IncomingMessage, ServerResponse } from 'http'
+import { getClientInfo, parseJsonBody, sendError, sendJson } from 'src/api/utils/http.ts'
+
 import {
-	requireSuperAdmin,
-	requireAdmin,
 	auditFromRequest,
+	requireAdmin,
+	requireSuperAdmin,
 } from '#src/api/auth/index.ts'
-import { parseJsonBody, sendJson, sendError, getClientInfo } from '../utils/http.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 
-// L{CORE} rollup server URL
-const LCORE_ROLLUP_URL = getEnvVariable('LCORE_ROLLUP_URL') || 'http://127.0.0.1:5004'
+// Production Cartesi node configuration
+const LCORE_NODE_URL = getEnvVariable('LCORE_NODE_URL') || 'http://127.0.0.1:10000'
+const LCORE_RPC_URL = getEnvVariable('LCORE_RPC_URL') || ''
+const LCORE_DAPP_ADDRESS = getEnvVariable('LCORE_DAPP_ADDRESS') || ''
+const LCORE_INPUTBOX_ADDRESS = getEnvVariable('LCORE_INPUTBOX_ADDRESS') || '0x59b22D57D4f067708AB0c00552767405926dc768'
 const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
 
-// Default sender for admin operations (attestor address)
-const ADMIN_SENDER = getEnvVariable('LCORE_ADMIN_ADDRESS') || '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
+// InputBox ABI (minimal)
+const INPUT_BOX_ABI = [
+	'function addInput(address _dapp, bytes calldata _input) external returns (bytes32)'
+]
+
+// Wallet for signing transactions
+let _wallet: Wallet | null = null
+let _provider: ethers.providers.JsonRpcProvider | null = null
+
+function getProvider(): ethers.providers.JsonRpcProvider {
+	if(!_provider) {
+		if(!LCORE_RPC_URL) {
+			throw new Error('LCORE_RPC_URL is required for production mode')
+		}
+
+		_provider = new ethers.providers.JsonRpcProvider(LCORE_RPC_URL)
+	}
+
+	return _provider
+}
+
+function getWallet(): Wallet {
+	if(!_wallet) {
+		const mnemonic = getEnvVariable('MNEMONIC')
+		if(!mnemonic) {
+			throw new Error('MNEMONIC is required for signing transactions')
+		}
+
+		_wallet = Wallet.fromMnemonic(mnemonic).connect(getProvider())
+	}
+
+	return _wallet
+}
+
+function hexEncode(data: unknown): string {
+	const jsonStr = JSON.stringify(data)
+	return '0x' + Buffer.from(jsonStr, 'utf-8').toString('hex')
+}
+
+function hexDecode(hex: string): unknown {
+	const str = Buffer.from(hex.slice(2), 'hex').toString('utf-8')
+	return JSON.parse(str)
+}
 
 interface BucketDefinition {
 	boundaries: number[]
@@ -43,57 +89,39 @@ interface ProviderSchemaInput {
 }
 
 /**
- * Submit an advance request to the L{CORE} rollup
+ * Submit an advance request to the L{CORE} rollup via InputBox contract
  */
 async function submitToLCore(
 	action: string,
 	payload: Record<string, unknown>,
-	sender = ADMIN_SENDER
-): Promise<{ success: boolean; data?: unknown; error?: string }> {
-	if (!LCORE_ENABLED) {
+	_sender?: string
+): Promise<{ success: boolean, data?: unknown, error?: string }> {
+	if(!LCORE_ENABLED) {
 		return { success: false, error: 'L{CORE} is not enabled' }
 	}
 
+	if(!LCORE_DAPP_ADDRESS) {
+		return { success: false, error: 'LCORE_DAPP_ADDRESS is required' }
+	}
+
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/input/advance`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				sender,
-				payload: { action, ...payload },
-			}),
-		})
+		const wallet = getWallet()
+		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
+		const inputData = hexEncode({ action, ...payload })
 
-		if (!response.ok) {
-			return {
-				success: false,
-				error: `HTTP ${response.status}: ${response.statusText}`,
-			}
-		}
+		// Submit to InputBox contract
+		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
+		const receipt = await tx.wait()
 
-		const result = await response.json() as {
-			status: 'accept' | 'reject'
-			notices: Array<{ payload: string; payloadJson: unknown }>
-			reports: Array<{ payload: string; payloadJson: unknown }>
-		}
-
-		if (result.status === 'reject') {
-			const errorReport = result.reports.find(r =>
-				r.payloadJson && typeof r.payloadJson === 'object' && 'error' in (r.payloadJson as object)
-			)
-			const errorPayload = errorReport?.payloadJson as { error?: string } | undefined
-
-			return {
-				success: false,
-				error: errorPayload?.error || 'Request rejected',
-			}
+		if(!receipt) {
+			return { success: false, error: 'Transaction failed - no receipt' }
 		}
 
 		return {
 			success: true,
-			data: result.notices[0]?.payloadJson,
+			data: { txHash: tx.hash, blockNumber: receipt.blockNumber },
 		}
-	} catch (error) {
+	} catch(error) {
 		return {
 			success: false,
 			error: error instanceof Error ? error.message : String(error),
@@ -102,24 +130,26 @@ async function submitToLCore(
 }
 
 /**
- * Submit an inspect query to the L{CORE} rollup
+ * Submit an inspect query to the L{CORE} Cartesi node
  */
 async function queryLCore(
 	type: string,
 	params: Record<string, string> = {}
-): Promise<{ success: boolean; data?: unknown; error?: string }> {
-	if (!LCORE_ENABLED) {
+): Promise<{ success: boolean, data?: unknown, error?: string }> {
+	if(!LCORE_ENABLED) {
 		return { success: false, error: 'L{CORE} is not enabled' }
 	}
 
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/input/inspect`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ type, params }),
+		// Build inspect query as hex-encoded JSON
+		const query = { type, params }
+		const hexPayload = hexEncode(query).slice(2) // Remove 0x prefix for URL
+
+		const response = await fetch(`${LCORE_NODE_URL}/inspect/${hexPayload}`, {
+			method: 'GET',
 		})
 
-		if (!response.ok) {
+		if(!response.ok) {
 			return {
 				success: false,
 				error: `HTTP ${response.status}: ${response.statusText}`,
@@ -127,14 +157,21 @@ async function queryLCore(
 		}
 
 		const result = await response.json() as {
-			reports: Array<{ payload: string; payloadJson: unknown }>
+			reports?: Array<{ payload: string }>
 		}
+
+		if(!result.reports || result.reports.length === 0) {
+			return { success: true, data: null }
+		}
+
+		// Decode hex payload
+		const data = hexDecode(result.reports[0].payload)
 
 		return {
 			success: true,
-			data: result.reports[0]?.payloadJson,
+			data,
 		}
-	} catch (error) {
+	} catch(error) {
 		return {
 			success: false,
 			error: error instanceof Error ? error.message : String(error),
@@ -151,7 +188,7 @@ export async function handleAddSchemaAdmin(
 	res: ServerResponse
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
-	if (!authReq) {
+	if(!authReq) {
 		return
 	}
 
@@ -161,7 +198,7 @@ export async function handleAddSchemaAdmin(
 		canAddAdmins?: boolean
 	}>(req)
 
-	if (!body?.walletAddress) {
+	if(!body?.walletAddress) {
 		return sendError(res, 400, 'walletAddress is required')
 	}
 
@@ -171,7 +208,7 @@ export async function handleAddSchemaAdmin(
 		can_add_admins: body.canAddAdmins ?? false,
 	})
 
-	if (!result.success) {
+	if(!result.success) {
 		return sendError(res, 400, result.error || 'Failed to add schema admin')
 	}
 
@@ -200,34 +237,35 @@ export async function handleRegisterProviderSchema(
 	res: ServerResponse
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
-	if (!authReq) {
+	if(!authReq) {
 		return
 	}
 
 	const body = await parseJsonBody<ProviderSchemaInput>(req)
 
-	if (!body?.provider || !body?.flowType || !body?.domain) {
+	if(!body?.provider || !body?.flowType || !body?.domain) {
 		return sendError(res, 400, 'provider, flowType, and domain are required')
 	}
 
-	if (!body?.bucketDefinitions || Object.keys(body.bucketDefinitions).length === 0) {
+	if(!body?.bucketDefinitions || Object.keys(body.bucketDefinitions).length === 0) {
 		return sendError(res, 400, 'bucketDefinitions is required and must not be empty')
 	}
 
-	if (!body?.dataKeys || body.dataKeys.length === 0) {
+	if(!body?.dataKeys || body.dataKeys.length === 0) {
 		return sendError(res, 400, 'dataKeys is required and must not be empty')
 	}
 
-	if (!body?.freshnessHalfLife || body.freshnessHalfLife <= 0) {
+	if(!body?.freshnessHalfLife || body.freshnessHalfLife <= 0) {
 		return sendError(res, 400, 'freshnessHalfLife is required and must be positive')
 	}
 
 	// Validate bucket definitions
-	for (const [key, def] of Object.entries(body.bucketDefinitions)) {
-		if (!def.boundaries || !def.labels) {
+	for(const [key, def] of Object.entries(body.bucketDefinitions)) {
+		if(!def.boundaries || !def.labels) {
 			return sendError(res, 400, `Invalid bucket definition for key '${key}': must have boundaries and labels`)
 		}
-		if (def.boundaries.length !== def.labels.length + 1) {
+
+		if(def.boundaries.length !== def.labels.length + 1) {
 			return sendError(res, 400, `Invalid bucket definition for key '${key}': boundaries length must be labels length + 1`)
 		}
 	}
@@ -242,7 +280,7 @@ export async function handleRegisterProviderSchema(
 		min_freshness: body.minFreshness,
 	})
 
-	if (!result.success) {
+	if(!result.success) {
 		return sendError(res, 400, result.error || 'Failed to register provider schema')
 	}
 
@@ -273,7 +311,7 @@ export async function handleListProviderSchemas(
 	res: ServerResponse
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
-	if (!authReq) {
+	if(!authReq) {
 		return
 	}
 
@@ -286,7 +324,7 @@ export async function handleListProviderSchemas(
 		active_only: String(activeOnly),
 	})
 
-	if (!result.success) {
+	if(!result.success) {
 		return sendError(res, 500, result.error || 'Failed to query provider schemas')
 	}
 
@@ -302,13 +340,13 @@ export async function handleListSchemaAdmins(
 	res: ServerResponse
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
-	if (!authReq) {
+	if(!authReq) {
 		return
 	}
 
 	const result = await queryLCore('all_schema_admins')
 
-	if (!result.success) {
+	if(!result.success) {
 		return sendError(res, 500, result.error || 'Failed to query schema admins')
 	}
 
@@ -323,17 +361,19 @@ export async function handleLCoreStatus(
 	req: IncomingMessage,
 	res: ServerResponse
 ): Promise<void> {
-	if (!LCORE_ENABLED) {
+	if(!LCORE_ENABLED) {
 		return sendJson(res, { enabled: false, status: 'disabled' })
 	}
 
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/status`, {
-			method: 'GET',
+		const response = await fetch(`${LCORE_NODE_URL}/graphql`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ query: '{ inputs { totalCount } }' }),
 			signal: AbortSignal.timeout(5000),
 		})
 
-		if (!response.ok) {
+		if(!response.ok) {
 			return sendJson(res, {
 				enabled: true,
 				status: 'error',
@@ -341,9 +381,15 @@ export async function handleLCoreStatus(
 			})
 		}
 
-		const status = await response.json()
-		sendJson(res, { enabled: true, status: 'running', ...status })
-	} catch (error) {
+		const data = await response.json()
+		sendJson(res, {
+			enabled: true,
+			status: 'running',
+			nodeUrl: LCORE_NODE_URL,
+			dappAddress: LCORE_DAPP_ADDRESS,
+			...data,
+		})
+	} catch(error) {
 		sendJson(res, {
 			enabled: true,
 			status: 'unavailable',
@@ -360,18 +406,20 @@ export async function handleLCoreHealth(
 	req: IncomingMessage,
 	res: ServerResponse
 ): Promise<void> {
-	if (!LCORE_ENABLED) {
+	if(!LCORE_ENABLED) {
 		return sendJson(res, { healthy: false, reason: 'disabled' })
 	}
 
 	try {
-		const response = await fetch(`${LCORE_ROLLUP_URL}/health`, {
-			method: 'GET',
+		const response = await fetch(`${LCORE_NODE_URL}/graphql`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ query: '{ inputs { totalCount } }' }),
 			signal: AbortSignal.timeout(5000),
 		})
 
 		sendJson(res, { healthy: response.ok })
-	} catch {
+	} catch{
 		sendJson(res, { healthy: false, reason: 'connection_failed' })
 	}
 }
@@ -387,37 +435,37 @@ export async function handleLCoreRoute(
 	const method = req.method?.toUpperCase()
 
 	// POST /api/lcore/schema-admin
-	if (path === '/api/lcore/schema-admin' && method === 'POST') {
+	if(path === '/api/lcore/schema-admin' && method === 'POST') {
 		await handleAddSchemaAdmin(req, res)
 		return true
 	}
 
 	// POST /api/lcore/provider-schema
-	if (path === '/api/lcore/provider-schema' && method === 'POST') {
+	if(path === '/api/lcore/provider-schema' && method === 'POST') {
 		await handleRegisterProviderSchema(req, res)
 		return true
 	}
 
 	// GET /api/lcore/provider-schemas
-	if (path === '/api/lcore/provider-schemas' && method === 'GET') {
+	if(path === '/api/lcore/provider-schemas' && method === 'GET') {
 		await handleListProviderSchemas(req, res)
 		return true
 	}
 
 	// GET /api/lcore/schema-admins
-	if (path === '/api/lcore/schema-admins' && method === 'GET') {
+	if(path === '/api/lcore/schema-admins' && method === 'GET') {
 		await handleListSchemaAdmins(req, res)
 		return true
 	}
 
 	// GET /api/lcore/status
-	if (path === '/api/lcore/status' && method === 'GET') {
+	if(path === '/api/lcore/status' && method === 'GET') {
 		await handleLCoreStatus(req, res)
 		return true
 	}
 
 	// GET /api/lcore/health
-	if (path === '/api/lcore/health' && method === 'GET') {
+	if(path === '/api/lcore/health' && method === 'GET') {
 		await handleLCoreHealth(req, res)
 		return true
 	}

@@ -4,9 +4,10 @@
  * All admin actions should be logged for accountability and compliance.
  */
 
+import type { JWTPayload } from 'src/api/auth/jwt.ts'
+
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { AuditLog } from '#src/db/types.ts'
-import type { JWTPayload } from './jwt.ts'
 
 export type AuditAction =
 	// Admin management
@@ -121,7 +122,7 @@ export async function queryAuditLogs(params: {
 	endDate?: Date
 	limit?: number
 	offset?: number
-}): Promise<{ logs: AuditLog[]; total: number }> {
+}): Promise<{ logs: AuditLog[], total: number }> {
 	if(!isDatabaseConfigured()) {
 		return { logs: [], total: 0 }
 	}
@@ -213,7 +214,7 @@ export async function getActivitySummary(startDate: Date, endDate: Date): Promis
 		.gte('created_at', startDate.toISOString())
 		.lte('created_at', endDate.toISOString())
 
-	const logs = (data || []) as Array<{ action: string; admin_id: string | null }>
+	const logs = (data || []) as Array<{ action: string, admin_id: string | null }>
 
 	// Count actions
 	const actionCounts: Record<string, number> = {}

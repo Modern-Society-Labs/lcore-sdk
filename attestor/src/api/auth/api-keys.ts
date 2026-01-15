@@ -3,9 +3,10 @@
  */
 
 import { randomBytes } from 'crypto'
+import { hashSessionToken } from 'src/api/auth/jwt.ts'
+
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { ApiKey, ApiKeyInsert } from '#src/db/types.ts'
-import { hashSessionToken } from './jwt.ts'
 
 export interface ApiKeyInfo {
 	id: string
@@ -30,7 +31,7 @@ export interface CreateApiKeyResult {
  * Format: lc_xxxxxxxx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  * Where lc = locale, first 8 chars are prefix, rest is secret
  */
-function generateApiKey(): { key: string; prefix: string; hash: string } {
+function generateApiKey(): { key: string, prefix: string, hash: string } {
 	const secret = randomBytes(32).toString('hex')
 	const key = `lc_${secret}`
 	const prefix = key.slice(0, 11) // lc_xxxxxxx (11 chars)
@@ -133,7 +134,7 @@ export async function listApiKeys(adminId: string): Promise<ApiKeyInfo[]> {
 export async function revokeApiKey(
 	keyId: string,
 	adminId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -177,7 +178,7 @@ export async function updateApiKeyPermissions(
 	keyId: string,
 	adminId: string,
 	permissions: string[]
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean, error?: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}

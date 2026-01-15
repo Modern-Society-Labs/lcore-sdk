@@ -14,8 +14,9 @@
 
 import { utils } from 'ethers'
 import nacl from 'tweetnacl'
+
+import { getAttestorAddress, signAsAttestor } from '#src/server/utils/generics.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
-import { signAsAttestor, getAttestorAddress } from '#src/server/utils/generics.ts'
 import { SelectedServiceSignatureType } from '#src/utils/signatures/index.ts'
 
 // ============= Types =============
@@ -23,9 +24,9 @@ import { SelectedServiceSignatureType } from '#src/utils/signatures/index.ts'
 export interface EncryptedOutput {
 	version: 1
 	algorithm: 'nacl-box'
-	nonce: string        // Base64-encoded 24-byte nonce
-	ciphertext: string   // Base64-encoded encrypted data
-	publicKey: string    // Base64-encoded ephemeral public key
+	nonce: string // Base64-encoded 24-byte nonce
+	ciphertext: string // Base64-encoded encrypted data
+	publicKey: string // Base64-encoded ephemeral public key
 }
 
 /**
@@ -301,7 +302,7 @@ export function verifyDecryptionProof(
 		}
 
 		return true
-	} catch {
+	} catch{
 		return false
 	}
 }
@@ -368,7 +369,7 @@ export async function processLCoreResponse<T = unknown>(
  */
 export function processLCoreResponseSync<T = unknown>(
 	response: unknown
-): { data: T; wasEncrypted: boolean } | { error: string } {
+): { data: T, wasEncrypted: boolean } | { error: string } {
 	// Check if this is an encrypted response
 	if(isEncryptedOutput(response)) {
 		const result = decryptOutput<T>(response.payload)
@@ -411,7 +412,7 @@ export function processLCoreResponseSync<T = unknown>(
  */
 export function isEncryptedOutput(
 	response: unknown
-): response is { encrypted: true; payload: EncryptedOutput } {
+): response is { encrypted: true, payload: EncryptedOutput } {
 	if(typeof response !== 'object' || response === null) {
 		return false
 	}

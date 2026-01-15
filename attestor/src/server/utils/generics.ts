@@ -1,6 +1,5 @@
-import type { IncomingMessage } from 'http'
-
 import { Wallet } from 'ethers'
+import type { IncomingMessage } from 'http'
 
 import type { ServiceSignatureType } from '#src/proto/api.ts'
 import { RPCMessages } from '#src/proto/api.ts'
@@ -16,14 +15,14 @@ import { SIGNATURES } from '#src/utils/signatures/index.ts'
  */
 function getOperatorPrivateKey(): string {
 	const mnemonic = getEnvVariable('MNEMONIC')
-	if (mnemonic) {
+	if(mnemonic) {
 		// EigenCompute TEE mode - derive wallet from mnemonic
 		const wallet = Wallet.fromMnemonic(mnemonic)
 		return wallet.privateKey
 	}
 
 	const privateKey = getEnvVariable('PRIVATE_KEY')
-	if (!privateKey) {
+	if(!privateKey) {
 		throw new Error('Either PRIVATE_KEY or MNEMONIC environment variable must be set')
 	}
 

@@ -4,4 +4,14 @@ browser/resources
 example-local
 .github
 docker-compose.yaml
-attestor.dockerfile
+.git
+.env*
+*.log
+coverage
+.nyc_output
+cartesi/node_modules
+cartesi/dist
+cartesi/.cartesi
+memory-bank
+.vscode
+.idea

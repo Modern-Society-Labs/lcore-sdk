@@ -22,29 +22,30 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { getClientInfo, parseJsonBody, parseQuery, sendError, sendJson } from 'src/api/utils/http.ts'
+
 import {
-	submitApplication,
+	auditFromRequest,
+	createAuthMiddleware,
+	requireOperatorManager,
+} from '#src/api/auth/index.ts'
+import {
 	getApplicationById,
 	getApplicationByWallet,
-	listApplications,
-	startReview,
-	reviewApplication,
-	withdrawApplication,
 	getApplicationStats,
+	listApplications,
+	reviewApplication,
+	startReview,
+	submitApplication,
+	withdrawApplication,
 } from '#src/api/operators/application-service.ts'
 import {
 	getOperatorProfile,
-	updateOperatorProfile,
-	listOperators,
 	getOperatorStats,
+	listOperators,
+	updateOperatorProfile,
 } from '#src/api/operators/profile-service.ts'
-import {
-	createAuthMiddleware,
-	requireOperatorManager,
-	auditFromRequest,
-} from '#src/api/auth/index.ts'
 import type { ApplicationStatus } from '#src/db/types.ts'
-import { parseJsonBody, sendJson, sendError, parseQuery, getClientInfo } from '../utils/http.ts'
 
 const auth = createAuthMiddleware()
 
@@ -149,8 +150,8 @@ export async function handleGetMyApplication(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const application = await getApplicationByWallet(authReq.admin.wallet)
 
@@ -171,8 +172,8 @@ export async function handleWithdrawApplication(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{ applicationId: string }>(req)
 
@@ -199,8 +200,8 @@ export async function handleUpdateProfile(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{
 		displayName?: string
@@ -247,8 +248,8 @@ export async function handleListApplications(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const query = parseQuery(req.url || '')
 
@@ -272,8 +273,8 @@ export async function handleApplicationStats(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const stats = await getApplicationStats()
 	sendJson(res, stats)
@@ -290,8 +291,8 @@ export async function handleGetApplication(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const application = await getApplicationById(applicationId)
 
@@ -313,8 +314,8 @@ export async function handleStartReview(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const result = await startReview(applicationId, authReq.admin.sub)
 
@@ -345,8 +346,8 @@ export async function handleApproveApplication(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{ notes?: string }>(req)
 
@@ -387,8 +388,8 @@ export async function handleRejectApplication(
 ): Promise<void> {
 	const authReq = await requireOperatorManager(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{
 		notes?: string

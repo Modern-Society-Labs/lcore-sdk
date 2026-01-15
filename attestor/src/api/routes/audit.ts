@@ -7,14 +7,15 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { parseQuery, sendError, sendJson } from 'src/api/utils/http.ts'
+
+import type { AuditAction } from '#src/api/auth/index.ts'
 import {
-	queryAuditLogs,
-	getRecentActivity,
 	getActivitySummary,
+	getRecentActivity,
+	queryAuditLogs,
 	requireAdmin,
 } from '#src/api/auth/index.ts'
-import type { AuditAction } from '#src/api/auth/index.ts'
-import { sendJson, sendError, parseQuery } from '../utils/http.ts'
 
 /**
  * GET /api/audit
@@ -26,8 +27,8 @@ export async function handleQueryAuditLogs(
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const query = parseQuery(req.url || '')
 
@@ -91,8 +92,8 @@ export async function handleRecentActivity(
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const query = parseQuery(req.url || '')
 	const limit = query.limit ? parseInt(query.limit, 10) : 10
@@ -111,8 +112,8 @@ export async function handleActivitySummary(
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const query = parseQuery(req.url || '')
 

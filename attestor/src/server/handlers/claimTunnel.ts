@@ -1,12 +1,12 @@
 import { MAX_CLAIM_TIMESTAMP_DIFF_S } from '#src/config/index.ts'
-import { submitAttestationToLCore, discretizeClaimData } from '#src/lcore/index.ts'
+import { discretizeClaimData, submitAttestationToLCore } from '#src/lcore/index.ts'
 import { ClaimTunnelResponse } from '#src/proto/api.ts'
 import { getApm } from '#src/server/utils/apm.ts'
 import { assertTranscriptsMatch, assertValidClaimRequest } from '#src/server/utils/assert-valid-claim-request.ts'
 import { getAttestorAddress, signAsAttestor } from '#src/server/utils/generics.ts'
 import type { RPCHandler } from '#src/types/index.ts'
-import { AttestorError, createSignDataForClaim, getIdentifierFromClaimInfo, unixTimestampSeconds } from '#src/utils/index.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
+import { AttestorError, createSignDataForClaim, getIdentifierFromClaimInfo, unixTimestampSeconds } from '#src/utils/index.ts'
 
 // Enable/disable L{CORE} integration (enabled by default)
 const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
@@ -114,7 +114,7 @@ export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 			let parsedParams: Record<string, unknown> = {}
 			try {
 				parsedParams = JSON.parse(res.claim.parameters || '{}')
-			} catch {
+			} catch{
 				// Parameters not JSON, skip bucket extraction
 			}
 

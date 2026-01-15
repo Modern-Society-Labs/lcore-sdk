@@ -10,19 +10,20 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { getClientInfo, parseJsonBody, sendError, sendJson } from 'src/api/utils/http.ts'
+
 import {
-	listAdmins,
-	getAdminById,
-	registerAdmin,
-	updateAdminRole,
+	auditFromRequest,
 	deleteAdmin,
-	revokeAllSessions,
+	getAdminById,
+	listAdmins,
+	registerAdmin,
 	requireAdmin,
 	requireSuperAdmin,
-	auditFromRequest,
+	revokeAllSessions,
+	updateAdminRole,
 } from '#src/api/auth/index.ts'
 import type { AdminRole } from '#src/db/types.ts'
-import { parseJsonBody, sendJson, sendError, getClientInfo } from '../utils/http.ts'
 
 const VALID_ROLES: AdminRole[] = ['super_admin', 'admin', 'operator_manager', 'viewer']
 
@@ -36,8 +37,8 @@ export async function handleListAdmins(
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const admins = await listAdmins()
 	sendJson(res, { admins })
@@ -53,8 +54,8 @@ export async function handleCreateAdmin(
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{
 		walletAddress: string
@@ -109,8 +110,8 @@ export async function handleGetAdmin(
 ): Promise<void> {
 	const authReq = await requireAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const admin = await getAdminById(adminId)
 	if(!admin) {
@@ -131,8 +132,8 @@ export async function handleUpdateRole(
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{ role: AdminRole }>(req)
 
@@ -185,8 +186,8 @@ export async function handleDeleteAdmin(
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	// Get admin info for audit before deletion
 	const targetAdmin = await getAdminById(adminId)
@@ -226,8 +227,8 @@ export async function handleRevokeSessions(
 ): Promise<void> {
 	const authReq = await requireSuperAdmin(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const targetAdmin = await getAdminById(adminId)
 	if(!targetAdmin) {
@@ -268,6 +269,7 @@ export async function handleAdminsRoute(
 			await handleListAdmins(req, res)
 			return true
 		}
+
 		if(method === 'POST') {
 			await handleCreateAdmin(req, res)
 			return true
@@ -282,6 +284,7 @@ export async function handleAdminsRoute(
 			await handleGetAdmin(req, res, adminId)
 			return true
 		}
+
 		if(method === 'DELETE') {
 			await handleDeleteAdmin(req, res, adminId)
 			return true

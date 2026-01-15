@@ -4,9 +4,9 @@
  * Manages operator public profiles displayed on the platform.
  */
 
-import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
-import type { OperatorProfile, IndexedOperator } from '#src/db/types.ts'
 import { isValidAddress, normalizeAddress } from '#src/api/auth/wallet.ts'
+import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
+import type { IndexedOperator, OperatorProfile } from '#src/db/types.ts'
 
 export interface OperatorInfo {
 	walletAddress: string
@@ -109,7 +109,7 @@ export async function getOperatorProfile(walletAddress: string): Promise<Operato
  */
 export async function updateOperatorProfile(
 	params: UpdateProfileParams
-): Promise<{ success: true; profile: OperatorInfo } | { success: false; error: string }> {
+): Promise<{ success: true, profile: OperatorInfo } | { success: false, error: string }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured' }
 	}
@@ -129,36 +129,47 @@ export async function updateOperatorProfile(
 	if(params.displayName !== undefined) {
 		updateData.display_name = params.displayName || null
 	}
+
 	if(params.description !== undefined) {
 		updateData.description = params.description || null
 	}
+
 	if(params.logoUrl !== undefined) {
 		updateData.logo_url = params.logoUrl || null
 	}
+
 	if(params.bannerUrl !== undefined) {
 		updateData.banner_url = params.bannerUrl || null
 	}
+
 	if(params.website !== undefined) {
 		updateData.website = params.website || null
 	}
+
 	if(params.twitterHandle !== undefined) {
 		updateData.twitter_handle = params.twitterHandle || null
 	}
+
 	if(params.discordServer !== undefined) {
 		updateData.discord_server = params.discordServer || null
 	}
+
 	if(params.telegramGroup !== undefined) {
 		updateData.telegram_group = params.telegramGroup || null
 	}
+
 	if(params.geographicRegions !== undefined) {
 		updateData.geographic_regions = params.geographicRegions
 	}
+
 	if(params.supportedProviders !== undefined) {
 		updateData.supported_providers = params.supportedProviders
 	}
+
 	if(params.termsOfServiceUrl !== undefined) {
 		updateData.terms_of_service_url = params.termsOfServiceUrl || null
 	}
+
 	if(params.privacyPolicyUrl !== undefined) {
 		updateData.privacy_policy_url = params.privacyPolicyUrl || null
 	}
@@ -192,7 +203,7 @@ export async function listOperators(params: {
 	registeredOnly?: boolean
 	limit?: number
 	offset?: number
-}): Promise<{ operators: OperatorInfo[]; total: number }> {
+}): Promise<{ operators: OperatorInfo[], total: number }> {
 	if(!isDatabaseConfigured()) {
 		return { operators: [], total: 0 }
 	}
@@ -299,12 +310,14 @@ export async function getOperatorStats(): Promise<{
 		if(op.is_whitelisted) {
 			totalWhitelisted++
 		}
+
 		if(op.is_registered) {
 			totalRegistered++
 		}
+
 		try {
 			totalStake += BigInt(op.stake_weight || '0')
-		} catch {
+		} catch{
 			// Ignore invalid stake values
 		}
 	}

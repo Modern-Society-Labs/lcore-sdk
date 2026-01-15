@@ -1,5 +1,7 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from './types.ts'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
+import type { Database } from 'src/db/types.ts'
+
 import { getEnvVariable } from '#src/utils/env.ts'
 
 let supabaseClient: SupabaseClient<Database> | null = null
@@ -60,7 +62,7 @@ export function isDatabaseConfigured(): boolean {
 		const supabaseUrl = getEnvVariable('SUPABASE_URL')
 		const supabaseKey = getEnvVariable('SUPABASE_SERVICE_KEY')
 		return !!(supabaseUrl && supabaseKey)
-	} catch {
+	} catch{
 		return false
 	}
 }
@@ -68,7 +70,7 @@ export function isDatabaseConfigured(): boolean {
 /**
  * Test database connection.
  */
-export async function testDatabaseConnection(): Promise<{ ok: boolean; error?: string }> {
+export async function testDatabaseConnection(): Promise<{ ok: boolean, error?: string }> {
 	try {
 		const client = getSupabaseClient()
 		const { error } = await client.from('system_config').select('key').limit(1)
@@ -78,7 +80,7 @@ export async function testDatabaseConnection(): Promise<{ ok: boolean; error?: s
 		}
 
 		return { ok: true }
-	} catch (err) {
+	} catch(err) {
 		return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' }
 	}
 }

@@ -147,16 +147,16 @@ export function discretizeValue(
 	labels: string[]
 ): string {
 	// Validate boundaries/labels relationship
-	if (boundaries.length !== labels.length + 1) {
+	if(boundaries.length !== labels.length + 1) {
 		throw new Error(
 			`Invalid bucket definition: boundaries.length (${boundaries.length}) must equal labels.length + 1 (${labels.length + 1})`
 		)
 	}
 
 	// Find the appropriate bucket
-	for (let i = 0; i < labels.length; i++) {
-		if (value >= boundaries[i] && value < boundaries[i + 1]) {
-			return labels[i]
+	for(const [i, label] of labels.entries()) {
+		if(value >= boundaries[i] && value < boundaries[i + 1]) {
+			return label
 		}
 	}
 
@@ -181,33 +181,38 @@ export function extractNumericValues(params: Record<string, unknown>): Record<st
 	const result: Record<string, number> = {}
 
 	function extract(obj: unknown, prefix = ''): void {
-		if (obj === null || obj === undefined) return
+		if(obj === null || obj === undefined) {
+			return
+		}
 
-		if (typeof obj === 'number' && isFinite(obj)) {
-			if (prefix) {
+		if(typeof obj === 'number' && isFinite(obj)) {
+			if(prefix) {
 				result[prefix] = obj
 			}
+
 			return
 		}
 
-		if (typeof obj === 'string') {
+		if(typeof obj === 'string') {
 			// Try to parse as number
 			const num = parseFloat(obj.replace(/[,$%]/g, ''))
-			if (!isNaN(num) && isFinite(num)) {
-				if (prefix) {
-					result[prefix] = num
-				}
+			if(!isNaN(num) && isFinite(num) && prefix) {
+				result[prefix] = num
 			}
+
 			return
 		}
 
-		if (Array.isArray(obj)) {
-			obj.forEach((item, i) => extract(item, prefix ? `${prefix}[${i}]` : `[${i}]`))
+		if(Array.isArray(obj)) {
+			for(const [i, item] of obj.entries()) {
+				extract(item, prefix ? `${prefix}[${i}]` : `[${i}]`)
+			}
+
 			return
 		}
 
-		if (typeof obj === 'object') {
-			for (const [key, value] of Object.entries(obj)) {
+		if(typeof obj === 'object') {
+			for(const [key, value] of Object.entries(obj)) {
 				extract(value, prefix ? `${prefix}.${key}` : key)
 			}
 		}
@@ -234,7 +239,7 @@ export function discretizeClaimData(
 ): BucketResult[] {
 	const schema = customSchema || getSchema(provider, flowType)
 
-	if (!schema) {
+	if(!schema) {
 		// No schema found, return empty buckets
 		return []
 	}
@@ -243,28 +248,28 @@ export function discretizeClaimData(
 	const buckets: BucketResult[] = []
 
 	// Apply bucket definitions to matching fields
-	for (const [bucketKey, definition] of Object.entries(schema.bucketDefinitions)) {
+	for(const [bucketKey, definition] of Object.entries(schema.bucketDefinitions)) {
 		// Look for exact match or nested match
 		let value: number | undefined
 
 		// Try exact match
-		if (bucketKey in numericValues) {
+		if(bucketKey in numericValues) {
 			value = numericValues[bucketKey]
 		} else {
 			// Try to find a nested match (e.g., 'balance' matches 'account.balance')
-			for (const [fieldPath, fieldValue] of Object.entries(numericValues)) {
-				if (fieldPath.endsWith(`.${bucketKey}`) || fieldPath === bucketKey) {
+			for(const [fieldPath, fieldValue] of Object.entries(numericValues)) {
+				if(fieldPath.endsWith(`.${bucketKey}`) || fieldPath === bucketKey) {
 					value = fieldValue
 					break
 				}
 			}
 		}
 
-		if (value !== undefined) {
+		if(value !== undefined) {
 			try {
 				const label = discretizeValue(value, definition.boundaries, definition.labels)
 				buckets.push({ key: bucketKey, value: label })
-			} catch (err) {
+			} catch(err) {
 				// Skip invalid bucket definitions
 				console.warn(`Skipping bucket ${bucketKey}: ${err}`)
 			}

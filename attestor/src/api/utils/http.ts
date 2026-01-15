@@ -22,7 +22,7 @@ export async function parseJsonBody<T>(req: IncomingMessage): Promise<T | null> 
 		req.on('end', () => {
 			try {
 				resolve(JSON.parse(body) as T)
-			} catch {
+			} catch{
 				resolve(null)
 			}
 		})

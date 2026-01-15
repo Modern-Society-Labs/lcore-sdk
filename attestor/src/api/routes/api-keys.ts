@@ -8,16 +8,17 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { getClientInfo, parseJsonBody, sendError, sendJson } from 'src/api/utils/http.ts'
+
 import {
+	API_KEY_PERMISSIONS,
+	auditFromRequest,
 	createApiKey,
+	createAuthMiddleware,
 	listApiKeys,
 	revokeApiKey,
 	updateApiKeyPermissions,
-	API_KEY_PERMISSIONS,
-	createAuthMiddleware,
-	auditFromRequest,
 } from '#src/api/auth/index.ts'
-import { parseJsonBody, sendJson, sendError, getClientInfo } from '../utils/http.ts'
 
 const auth = createAuthMiddleware()
 
@@ -31,8 +32,8 @@ export async function handleListApiKeys(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const keys = await listApiKeys(authReq.admin.sub)
 	sendJson(res, {
@@ -51,8 +52,8 @@ export async function handleCreateApiKey(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{
 		name: string
@@ -117,8 +118,8 @@ export async function handleRevokeApiKey(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const result = await revokeApiKey(keyId, authReq.admin.sub)
 
@@ -148,8 +149,8 @@ export async function handleUpdateApiKey(
 ): Promise<void> {
 	const authReq = await auth(req, res)
 	if(!authReq) {
- return
-}
+		return
+	}
 
 	const body = await parseJsonBody<{ permissions: string[] }>(req)
 
@@ -189,6 +190,7 @@ export async function handleApiKeysRoute(
 			await handleListApiKeys(req, res)
 			return true
 		}
+
 		if(method === 'POST') {
 			await handleCreateApiKey(req, res)
 			return true
@@ -203,6 +205,7 @@ export async function handleApiKeysRoute(
 			await handleRevokeApiKey(req, res, keyId)
 			return true
 		}
+
 		if(method === 'PUT') {
 			await handleUpdateApiKey(req, res, keyId)
 			return true

@@ -5,8 +5,9 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import { verifyJWT, shouldRefreshToken, refreshJWT, hashSessionToken } from './jwt.ts'
-import type { JWTPayload } from './jwt.ts'
+import type { JWTPayload } from 'src/api/auth/jwt.ts'
+import { HASH_VERSION, hashSessionToken, refreshJWT, shouldRefreshToken, verifyJWT, verifySessionTokenHash } from 'src/api/auth/jwt.ts'
+
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { AdminRole } from '#src/db/types.ts'
 
@@ -70,7 +71,7 @@ export function hasRequiredRole(userRole: AdminRole, requiredRole: AdminRole): b
 async function authenticateJWT(
 	token: string,
 	options: AuthMiddlewareOptions
-): Promise<{ success: true; payload: JWTPayload } | { success: false; error: string; status: number }> {
+): Promise<{ success: true, payload: JWTPayload } | { success: false, error: string, status: number }> {
 	try {
 		const payload = verifyJWT(token)
 
@@ -86,18 +87,63 @@ async function authenticateJWT(
 		// Optionally verify session still exists in database
 		if(isDatabaseConfigured()) {
 			const supabase = getSupabaseClient()
-			const tokenHash = hashSessionToken(token)
+
+			// First try to find session with v1 hash (most common)
+			const tokenHashV1 = hashSessionToken(token)
 
 			const { data: sessionData } = await supabase
 				.from('admin_sessions')
-				.select('id, revoked_at')
-				.eq('token_hash', tokenHash)
+				.select('id, token_hash, hash_version, revoked_at')
+				.eq('token_hash', tokenHashV1)
 				.single()
 
-			const session = sessionData as { id: string; revoked_at: string | null } | null
+			const session = sessionData as {
+				id: string
+				token_hash: string
+				hash_version: number
+				revoked_at: string | null
+			} | null
 
-			if(session?.revoked_at) {
-				return { success: false, error: 'Session has been revoked', status: 401 }
+			if(session) {
+				// Found session with v1 hash
+				if(session.revoked_at) {
+					return { success: false, error: 'Session has been revoked', status: 401 }
+				}
+			} else {
+				// Try to find sessions with v2 (bcrypt) hash - requires iterating
+				// This is slower but only needed during migration period
+				const { data: bcryptSessions } = await supabase
+					.from('admin_sessions')
+					.select('id, token_hash, hash_version, revoked_at')
+					.eq('hash_version', HASH_VERSION.BCRYPT)
+					.is('revoked_at', null)
+					.limit(100) // Limit to prevent DoS
+
+				const bcryptSession = bcryptSessions as Array<{
+					id: string
+					token_hash: string
+					hash_version: number
+					revoked_at: string | null
+				}> | null
+
+				if(bcryptSession?.length) {
+					// Check each bcrypt session (parallel for performance)
+					const matches = await Promise.all(
+						bcryptSession.map(async s => ({
+							session: s,
+							matches: await verifySessionTokenHash(token, s.token_hash, s.hash_version),
+						}))
+					)
+
+					const matchingSession = matches.find(m => m.matches)
+					if(!matchingSession) {
+						return { success: false, error: 'Session not found', status: 401 }
+					}
+
+					if(matchingSession.session.revoked_at) {
+						return { success: false, error: 'Session has been revoked', status: 401 }
+					}
+				}
 			}
 		}
 
@@ -114,7 +160,7 @@ async function authenticateJWT(
 async function authenticateApiKey(
 	apiKey: string,
 	options: AuthMiddlewareOptions
-): Promise<{ success: true; payload: JWTPayload } | { success: false; error: string; status: number }> {
+): Promise<{ success: true, payload: JWTPayload } | { success: false, error: string, status: number }> {
 	if(!isDatabaseConfigured()) {
 		return { success: false, error: 'Database not configured', status: 500 }
 	}
@@ -123,25 +169,58 @@ async function authenticateApiKey(
 
 	// API keys are stored as: prefix (first 8 chars) + hash
 	const prefix = apiKey.slice(0, 8)
-	const keyHash = hashSessionToken(apiKey)
+	const keyHashV1 = hashSessionToken(apiKey)
 
-	const { data: keyData, error } = await supabase
+	// First try v1 hash (most common)
+	const keyData = await supabase
 		.from('api_keys')
-		.select('id, admin_id, permissions, rate_limit_per_minute, expires_at, last_used_at')
+		.select('id, admin_id, key_hash, hash_version, permissions, rate_limit_per_minute, expires_at, last_used_at, is_active')
 		.eq('key_prefix', prefix)
-		.eq('key_hash', keyHash)
+		.eq('key_hash', keyHashV1)
+		.eq('is_active', true)
 		.single()
 
-	const key = keyData as {
+	// Define the type for API key records
+	interface ApiKeyRecord {
 		id: string
 		admin_id: string
+		key_hash: string
+		hash_version: number
 		permissions: unknown
 		rate_limit_per_minute: number
 		expires_at: string | null
 		last_used_at: string | null
-	} | null
+		is_active: boolean
+	}
 
-	if(error || !key) {
+	let key = keyData.data as ApiKeyRecord | null
+
+	// If not found with v1 hash, try bcrypt keys with same prefix
+	if(!key) {
+		const { data: bcryptKeys } = await supabase
+			.from('api_keys')
+			.select('id, admin_id, key_hash, hash_version, permissions, rate_limit_per_minute, expires_at, last_used_at, is_active')
+			.eq('key_prefix', prefix)
+			.eq('hash_version', HASH_VERSION.BCRYPT)
+			.eq('is_active', true)
+
+		const bcryptKeyList = bcryptKeys as ApiKeyRecord[] | null
+
+		if(bcryptKeyList?.length) {
+			// Check each bcrypt key
+			for(const k of bcryptKeyList) {
+				if(k) {
+					const matches = await verifySessionTokenHash(apiKey, k.key_hash, k.hash_version)
+					if(matches) {
+						key = k
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if(!key) {
 		return { success: false, error: 'Invalid API key', status: 401 }
 	}
 
