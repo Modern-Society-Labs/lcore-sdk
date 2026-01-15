@@ -55,7 +55,6 @@ cert/*.pfx
 
 # Internal documentation (exclude from public repo)
 memory-bank/
-docs/
 
 # Build artifacts
 dist/
