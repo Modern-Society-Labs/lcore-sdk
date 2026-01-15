@@ -159,9 +159,7 @@ ROLLUP_HTTP_SERVER_URL=http://localhost:5004
 
 ## Documentation
 
-See [attestor/docs/](attestor/docs/) for setup guides:
-- [QUICKSTART.md](attestor/docs/QUICKSTART.md) - 15-minute deployment guide
-- [EXTERNAL_SERVICES.md](attestor/docs/EXTERNAL_SERVICES.md) - EigenCloud & Cartesi setup
+Full documentation available on GitBook (coming soon).
 
 ## Related Projects
 
