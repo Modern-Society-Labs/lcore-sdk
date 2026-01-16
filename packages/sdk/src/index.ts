@@ -44,3 +44,24 @@ export {
   buildInspectUrl,
   validateConfig,
 } from './utils.js'
+
+// IoT Provider Helpers
+export {
+  awsIotShadow,
+  azureIotTwin,
+  gcpIotDevice,
+  thingsBoard,
+  homeAssistant,
+  genericApi,
+  createIoTRequest,
+} from './iot.js'
+
+export type {
+  AwsIotShadowConfig,
+  AzureIotTwinConfig,
+  GcpIotDeviceConfig,
+  ThingsBoardConfig,
+  HomeAssistantConfig,
+  GenericApiConfig,
+  IoTProviderConfig,
+} from './iot.js'
