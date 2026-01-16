@@ -1,174 +1,162 @@
 # L{CORE} SDK
 
-Template SDK combining [attestor-core](https://github.com/Modern-Society-Labs/attestor-core) with [cartesi-sqlite-node](https://github.com/Modern-Society-Labs/cartesi-sqlite-node) for building verified data applications.
+Privacy-preserving attestation layer for off-chain data, combining TEE-based verification with Cartesi rollups for deterministic storage.
 
-Part of the L{CORE} ecosystem by [Modern Society Labs](https://github.com/Modern-Society-Labs).
+By [Modern Society Labs](https://github.com/Modern-Society-Labs).
 
-## Overview
+## What is L{CORE}?
 
-L{CORE} SDK provides a complete foundation for building applications that require:
-- **Verified off-chain data** via TEE attestation
-- **Deterministic state management** via Cartesi rollups
-- **SQLite persistence** for complex queries and data relationships
+L{CORE} enables **trustless verification of off-chain data** for blockchain applications. It solves the fundamental problem that blockchains can only verify on-chain data, but real-world applications need external data (APIs, IoT sensors, databases) without trusting a central authority.
 
-This is a **generic template** - extend it with your own handlers and database schema for your specific use case.
+**Key Features:**
+
+- **zkTLS Attestation** - Cryptographic proofs of HTTP responses
+- **Privacy Buckets** - Discretize sensitive data (e.g., "income > $50k" instead of exact amount)
+- **Deterministic Storage** - SQLite on Cartesi for verifiable queries
+- **No Oracles** - Direct verification, no trusted third parties
+
+## Quick Start
+
+### Option 1: Use the SDK (Recommended)
+
+```bash
+npm install @localecore/lcore-sdk
+```
+
+```typescript
+import { LCore } from '@localecore/lcore-sdk'
+
+const lcore = new LCore({
+  attestorUrl: 'http://localhost:8001',
+  cartesiUrl: 'http://localhost:10000',
+  dappAddress: '0xYourDappAddress',
+})
+
+// Attest data from any HTTP source
+const result = await lcore.attest({
+  provider: 'http',
+  params: {
+    url: 'https://api.example.com/data',
+    responseRedactions: [{ jsonPath: 'temperature' }]
+  }
+})
+
+// Query attested data
+const data = await lcore.query({
+  type: 'attestation',
+  params: { claimId: result.claimId }
+})
+```
+
+### Option 2: Self-Host with Docker
+
+```bash
+# Clone and configure
+git clone https://github.com/Modern-Society-Labs/lcore-sdk.git
+cd lcore-sdk
+cp .env.example .env
+# Edit .env with your values
+
+# Start services
+docker-compose up -d
+
+# Verify
+curl http://localhost:8001/healthcheck
+```
+
+See [Self-Hosting Guide](docs/SELF-HOSTING.md) for full instructions.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Your Application                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────────┐    ┌─────────────────────────────┐ │
-│  │      Attestor       │    │         Cartesi             │ │
-│  │                     │    │                             │ │
-│  │  - TLS Verification │    │  - SQLite State             │ │
-│  │  - ZK Proofs        │───▶│  - Deterministic Execution  │ │
-│  │  - TEE Signing      │    │  - Entity Management        │ │
-│  │                     │    │  - Data Sync                │ │
-│  └─────────────────────┘    └─────────────────────────────┘ │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           Your Application                              │
+│                                                                         │
+│   ┌───────────────────┐     ┌───────────────────┐     ┌──────────────┐ │
+│   │  lcore-sdk        │     │  Attestor         │     │ Cartesi Node │ │
+│   │  (npm package)    │     │  (TEE/zkTLS)      │     │ (SQLite)     │ │
+│   │                   │     │                   │     │              │ │
+│   │  lcore.attest()   │────▶│  Verify & Sign    │────▶│  Store &     │ │
+│   │  lcore.query()    │◀────│                   │◀────│  Query       │ │
+│   └───────────────────┘     └───────────────────┘     └──────────────┘ │
+│                                      │                       │         │
+│                                      └───────────────────────┘         │
+│                                               │                        │
+│                                               ▼                        │
+│                                    ┌───────────────────┐               │
+│                                    │  Arbitrum Sepolia │               │
+│                                    │  (Settlement)     │               │
+│                                    └───────────────────┘               │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [SDK Usage](docs/SDK-USAGE.md) | TypeScript SDK reference |
+| [Self-Hosting](docs/SELF-HOSTING.md) | Run your own infrastructure |
+| [Configuration](docs/CONFIGURATION.md) | Environment variables |
+| [IoT Patterns](memory-bank/iot-providers.md) | AWS IoT, Azure, GCP examples |
 
 ## Project Structure
 
 ```
 lcore-sdk/
-├── attestor/                 # Attestation infrastructure
+├── packages/
+│   └── sdk/                  # @localecore/lcore-sdk npm package
+├── attestor/                 # TEE-based attestation server
 │   ├── src/
-│   │   ├── server/           # Attestor server
-│   │   ├── providers/        # Data providers (HTTP, etc.)
-│   │   └── utils/            # Utilities
-│   └── package.json
-├── cartesi/                  # Rollup framework
+│   │   ├── api/              # REST API routes
+│   │   ├── lcore/            # Cartesi integration
+│   │   └── providers/        # Data providers
+│   └── docs/                 # Attestor documentation
+├── cartesi/                  # Deterministic compute layer
 │   ├── src/
-│   │   ├── index.ts          # Entry point
-│   │   ├── db.ts             # SQLite schema
-│   │   ├── router.ts         # Request routing
-│   │   ├── handlers/         # Generic handlers
-│   │   │   ├── entity.ts     # Entity management
-│   │   │   ├── data-source.ts# External data sync
-│   │   │   ├── computation.ts# Derived calculations
-│   │   │   ├── proof.ts      # Data verification
-│   │   │   ├── approval.ts   # Approval workflow
-│   │   │   └── stats.ts      # Statistics
-│   │   └── utils/            # Utilities
-│   └── package.json
-└── README.md
+│   │   ├── handlers/         # L{CORE} handlers (privacy, buckets)
+│   │   └── db.ts             # SQLite schema
+│   └── Dockerfile            # RISC-V build
+├── docs/                     # User documentation
+├── memory-bank/              # Architecture decisions & roadmap
+├── docker-compose.yml        # Self-hosting template
+└── .env.example              # Configuration template
 ```
 
-## Quick Start
+## Use Cases
 
-### 1. Clone the Template
+- **IoT Data Attestation** - Verify sensor readings without exposing raw data
+- **Financial Verification** - Prove income brackets without revealing exact amounts
+- **Identity Claims** - Attest attributes without full disclosure
+- **API Data Proofs** - Verifiable snapshots of external API responses
 
-```bash
-git clone https://github.com/Modern-Society-Labs/lcore-sdk.git my-app
-cd my-app
-```
+## Roadmap
 
-### 2. Install Dependencies
+See [roadmap-pending.md](memory-bank/roadmap-pending.md) for current status.
 
-```bash
-# Attestor
-cd attestor && npm install
+**Completed:**
 
-# Cartesi
-cd ../cartesi && npm install
-```
+- [x] TEE attestation infrastructure
+- [x] Cartesi privacy layer (buckets, encryption)
+- [x] HTTP provider for API attestation
+- [x] TypeScript SDK
+- [x] Docker Compose self-hosting
 
-### 3. Run Development Environment
+**Phase 2 (Planned):**
 
-```bash
-# Start attestor (in one terminal)
-cd attestor && npm run start
+- [ ] Device SDK HTTP client (direct IoT attestation)
+- [ ] EigenCloud deployment automation
+- [ ] Additional provider types
 
-# Start Cartesi rollup (in another terminal)
-cd cartesi && npx @cartesi/cli run
-```
+## Contributing
 
-## Extending the Template
-
-### Adding Custom Handlers
-
-Create new handlers in `cartesi/src/handlers/`:
-
-```typescript
-// cartesi/src/handlers/my-feature.ts
-import { RouteHandler } from '../router'
-
-export const myFeatureHandler: RouteHandler = async (db, payload) => {
-  // Your logic here
-  return { success: true }
-}
-```
-
-Register in `cartesi/src/handlers/index.ts`:
-
-```typescript
-export { myFeatureHandler } from './my-feature'
-```
-
-### Extending the Database Schema
-
-Modify `cartesi/src/db.ts` to add your tables:
-
-```typescript
-db.run(`
-  CREATE TABLE IF NOT EXISTS my_table (
-    id TEXT PRIMARY KEY,
-    data TEXT NOT NULL,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
-  )
-`)
-```
-
-### Adding Custom Providers
-
-Create providers in `attestor/src/providers/` for new data sources.
-
-## Configuration
-
-### Attestor Environment
-
-Copy `attestor/.env.example` to `attestor/.env`:
-
-```env
-PORT=8001
-PRIVATE_KEY=your_wallet_private_key
-LOG_LEVEL=info
-```
-
-### Cartesi Environment
-
-```env
-ROLLUP_HTTP_SERVER_URL=http://localhost:5004
-```
-
-## Generic Handlers
-
-| Handler | Purpose |
-|---------|---------|
-| `entity` | CRUD operations for entities |
-| `data-source` | Sync external data into rollup |
-| `computation` | Derived/calculated values |
-| `proof` | Data verification and attestation |
-| `approval` | Multi-party approval workflows |
-| `stats` | Aggregate statistics |
-
-## Documentation
-
-Full documentation available on GitBook (coming soon).
-
-## Related Projects
-
-| Repository | Description |
-|------------|-------------|
-| [attestor-core](https://github.com/Modern-Society-Labs/attestor-core) | Standalone attestation infrastructure |
-| [cartesi-sqlite-node](https://github.com/Modern-Society-Labs/cartesi-sqlite-node) | Standalone Cartesi framework |
-| [locale-city-chain](https://github.com/Locale-Network/locale-city-chain) | Production implementation example |
+Contributions welcome! Please read the existing code patterns before submitting PRs.
 
 ## License
 
 AGPL v3
+
+## Related
+
+- [Reclaim Protocol](https://reclaimprotocol.org) - zkTLS attestation (upstream)
+- [Cartesi](https://cartesi.io) - Deterministic rollups
+- [Arbitrum](https://arbitrum.io) - L2 settlement
