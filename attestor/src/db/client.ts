@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from 'src/db/types.ts'
+import type { Database } from '#src/db/types.ts'
 
 import { getEnvVariable } from '#src/utils/env.ts'
 

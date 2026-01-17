@@ -259,6 +259,23 @@ export function initLCoreSchema(): void {
 
     CREATE INDEX IF NOT EXISTS idx_schema_provider ON provider_schemas(provider);
     CREATE INDEX IF NOT EXISTS idx_schema_domain ON provider_schemas(domain);
+
+    -- ============= DEVICE ATTESTATIONS =============
+
+    -- Direct device attestations from IoT sensors (via did:key)
+    -- This is a lightweight path that doesn't require provider schemas
+    CREATE TABLE IF NOT EXISTS device_attestations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_did TEXT NOT NULL,
+      data TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      source TEXT,
+      input_index INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_device_attestations_did ON device_attestations(device_did);
+    CREATE INDEX IF NOT EXISTS idx_device_attestations_timestamp ON device_attestations(timestamp DESC);
   `);
 
   // Initialize encryption schema (separate table)

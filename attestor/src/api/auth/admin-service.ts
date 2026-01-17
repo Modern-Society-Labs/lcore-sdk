@@ -2,9 +2,9 @@
  * Admin service for managing admin users and sessions
  */
 
-import type { JWTPayload, SessionToken } from 'src/api/auth/jwt.ts'
-import { createJWT, generateSessionId, hashSessionToken } from 'src/api/auth/jwt.ts'
-import { generateNonce, isValidAddress, normalizeAddress, verifyWalletSignature } from 'src/api/auth/wallet.ts'
+import type { JWTPayload, SessionToken } from '#src/api/auth/jwt.ts'
+import { createJWT, generateSessionId, hashSessionToken } from '#src/api/auth/jwt.ts'
+import { generateNonce, isValidAddress, normalizeAddress, verifyWalletSignature } from '#src/api/auth/wallet.ts'
 
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { Admin, AdminInsert, AdminRole, AdminSessionInsert } from '#src/db/types.ts'

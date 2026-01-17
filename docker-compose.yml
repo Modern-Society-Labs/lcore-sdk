@@ -1,83 +1,48 @@
 # L{CORE} Self-Hosting Docker Compose
 #
-# Usage:
-#   1. Copy .env.example to .env and fill in your values
-#   2. Run: docker-compose up -d
-#   3. Verify: curl http://localhost:8001/healthcheck
+# For EigenCloud deployment, deploy each service separately:
+#   - cartesi-node: modernsociety/lcore-node:latest
+#   - attestor: modernsociety/lcore-attestor:latest
 #
-# See docs/SELF-HOSTING.md for full instructions.
+# Both connect to external Supabase PostgreSQL.
 
 services:
-  # L{CORE} Attestor - TEE-based data verification
-  attestor:
-    image: ghcr.io/modern-society-labs/lcore-attestor:latest
-    build:
-      context: .
-      dockerfile: attestor.dockerfile
-    ports:
-      - "8001:8001"
-    environment:
-      # L{CORE} Configuration
-      - LCORE_ENABLED=1
-      - LCORE_NODE_URL=http://cartesi:10000
-      - LCORE_RPC_URL=${LCORE_RPC_URL}
-      - LCORE_DAPP_ADDRESS=${LCORE_DAPP_ADDRESS}
-      - LCORE_INPUTBOX_ADDRESS=${LCORE_INPUTBOX_ADDRESS:-0x59b22D57D4f067708AB0c00552767405926dc768}
-
-      # Wallet Configuration
-      - PRIVATE_KEY=${PRIVATE_KEY}
-      - MNEMONIC=${MNEMONIC}
-
-      # L{CORE} Encryption Keys
-      - LCORE_ADMIN_PUBLIC_KEY=${LCORE_ADMIN_PUBLIC_KEY}
-      - LCORE_ADMIN_PRIVATE_KEY=${LCORE_ADMIN_PRIVATE_KEY}
-
-      # Logging
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    depends_on:
-      - cartesi
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # Cartesi Node - Deterministic compute layer with SQLite
-  cartesi:
-    image: ghcr.io/modern-society-labs/lcore-cartesi:latest
-    build:
-      context: .
-      dockerfile: cartesi-node.dockerfile
+  # Cartesi Node - Validator with L{CORE} dApp
+  cartesi-node:
+    image: modernsociety/lcore-node:latest
     ports:
       - "10000:10000"
     environment:
-      # Cartesi Configuration
-      - CARTESI_HTTP_ADDRESS=0.0.0.0
+      - CARTESI_BLOCKCHAIN_FINALITY_OFFSET=1
       - CARTESI_BLOCKCHAIN_ID=${CARTESI_BLOCKCHAIN_ID:-421614}
-      - CARTESI_BLOCKCHAIN_HTTP_ENDPOINT=${LCORE_RPC_URL}
-      - CARTESI_BLOCKCHAIN_WS_ENDPOINT=${CARTESI_WS_ENDPOINT}
-
-      # Contract Addresses
       - CARTESI_CONTRACTS_APPLICATION_ADDRESS=${LCORE_DAPP_ADDRESS}
+      - CARTESI_CONTRACTS_AUTHORITY_ADDRESS=${CARTESI_AUTHORITY_ADDRESS}
+      - CARTESI_CONTRACTS_HISTORY_ADDRESS=${CARTESI_HISTORY_ADDRESS}
       - CARTESI_CONTRACTS_INPUT_BOX_ADDRESS=${LCORE_INPUTBOX_ADDRESS:-0x59b22D57D4f067708AB0c00552767405926dc768}
-
-      # Wallet
+      - CARTESI_CONTRACTS_INPUT_BOX_DEPLOYMENT_BLOCK_NUMBER=${CARTESI_INPUTBOX_BLOCK:-2838409}
+      - CARTESI_EPOCH_LENGTH=${CARTESI_EPOCH_LENGTH:-43200}
       - CARTESI_AUTH_MNEMONIC=${MNEMONIC}
-
-      # Proof Signing
-      - PROOF_SIGNING_KEY=${PROOF_SIGNING_KEY}
+      - CARTESI_BLOCKCHAIN_HTTP_ENDPOINT=${LCORE_RPC_URL}
+      - CARTESI_BLOCKCHAIN_WS_ENDPOINT=${LCORE_WS_URL}
+      - CARTESI_POSTGRES_ENDPOINT=${CARTESI_POSTGRES_ENDPOINT}
+      - CARTESI_EXPERIMENTAL_DISABLE_CONFIG_LOG=true
+      - CARTESI_HTTP_ADDRESS=0.0.0.0
+      - ROLLUP_HTTP_SERVER_URL=http://127.0.0.1:5004
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:10000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    volumes:
-      - cartesi-data:/data
 
-volumes:
-  cartesi-data:
-    driver: local
+  # L{CORE} Attestor - TEE-based data verification with device endpoint
+  attestor:
+    image: modernsociety/lcore-attestor:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - MNEMONIC=${MNEMONIC}
+      - LCORE_ENABLED=1
+      - LCORE_RPC_URL=${LCORE_RPC_URL}
+      - LCORE_DAPP_ADDRESS=${LCORE_DAPP_ADDRESS}
+      - LCORE_INPUTBOX_ADDRESS=${LCORE_INPUTBOX_ADDRESS:-0x59b22D57D4f067708AB0c00552767405926dc768}
+      - LCORE_NODE_URL=${LCORE_NODE_URL:-http://cartesi-node:10000}
+      - LCORE_ADMIN_PUBLIC_KEY=${LCORE_ADMIN_PUBLIC_KEY}
+      - LCORE_ADMIN_PRIVATE_KEY=${LCORE_ADMIN_PRIVATE_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    restart: unless-stopped

@@ -9,7 +9,7 @@
  */
 
 import { ethers, Wallet } from 'ethers'
-import { type DecryptionProof, processLCoreResponse } from 'src/lcore/encryption.ts'
+import { type DecryptionProof, processLCoreResponse } from '#src/lcore/encryption.ts'
 
 import { getEnvVariable } from '#src/utils/env.ts'
 

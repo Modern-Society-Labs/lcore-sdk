@@ -56,6 +56,14 @@ export {
   handleInspectEncryptionStatus,
 } from './lcore-encryption';
 
+// ============= Device Attestation Handlers =============
+export {
+  handleDeviceAttestation,
+  handleInspectDeviceAttestations,
+  handleInspectDeviceLatest,
+  handleInspectDeviceStats,
+} from './lcore-device';
+
 // ============= Route Configuration =============
 
 import { RouteConfig } from '../router';
@@ -107,6 +115,13 @@ import {
   handleInspectEncryptionStatus,
 } from './lcore-encryption';
 
+import {
+  handleDeviceAttestation,
+  handleInspectDeviceAttestations,
+  handleInspectDeviceLatest,
+  handleInspectDeviceStats,
+} from './lcore-device';
+
 /**
  * L{CORE} SDK Route Configuration
  *
@@ -132,6 +147,9 @@ export const lcoreRouteConfig: RouteConfig = {
 
     // Encryption management (for admins)
     set_encryption_key: handleSetEncryptionKey,
+
+    // Device attestation (from IoT devices via did:key)
+    device_attestation: handleDeviceAttestation,
   },
   inspect: {
     // Attestation queries
@@ -168,6 +186,11 @@ export const lcoreRouteConfig: RouteConfig = {
     // Encryption queries
     encryption_config: handleInspectEncryptionConfig,
     encryption_status: handleInspectEncryptionStatus,
+
+    // Device attestation queries
+    device_attestations: handleInspectDeviceAttestations,
+    device_latest: handleInspectDeviceLatest,
+    device_stats: handleInspectDeviceStats,
   },
 };
 

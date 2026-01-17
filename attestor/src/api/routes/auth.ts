@@ -9,7 +9,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import { getClientInfo, parseJsonBody, sendError, sendJson } from 'src/api/utils/http.ts'
+import { getClientInfo, parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
 
 import type { AuthenticatedRequest } from '#src/api/auth/index.ts'
 import {

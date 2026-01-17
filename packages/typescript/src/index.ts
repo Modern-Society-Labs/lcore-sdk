@@ -65,3 +65,6 @@ export type {
   GenericApiConfig,
   IoTProviderConfig,
 } from './iot.js'
+
+// Device Identity (did:key support)
+export { DeviceIdentity, publicKeyToDIDKey, createJWS } from './device.js'

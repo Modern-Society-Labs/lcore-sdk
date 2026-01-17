@@ -3,7 +3,7 @@
  */
 
 import { randomBytes } from 'crypto'
-import { hashSessionToken } from 'src/api/auth/jwt.ts'
+import { hashSessionToken } from '#src/api/auth/jwt.ts'
 
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { ApiKey, ApiKeyInsert } from '#src/db/types.ts'

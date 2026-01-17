@@ -22,7 +22,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import { getClientInfo, parseJsonBody, parseQuery, sendError, sendJson } from 'src/api/utils/http.ts'
+import { getClientInfo, parseJsonBody, parseQuery, sendError, sendJson } from '#src/api/utils/http.ts'
 
 import {
 	auditFromRequest,

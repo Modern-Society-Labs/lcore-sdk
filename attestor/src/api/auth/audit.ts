@@ -4,7 +4,7 @@
  * All admin actions should be logged for accountability and compliance.
  */
 
-import type { JWTPayload } from 'src/api/auth/jwt.ts'
+import type { JWTPayload } from '#src/api/auth/jwt.ts'
 
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { AuditLog } from '#src/db/types.ts'

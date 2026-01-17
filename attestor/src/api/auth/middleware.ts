@@ -5,8 +5,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import type { JWTPayload } from 'src/api/auth/jwt.ts'
-import { HASH_VERSION, hashSessionToken, refreshJWT, shouldRefreshToken, verifyJWT, verifySessionTokenHash } from 'src/api/auth/jwt.ts'
+import type { JWTPayload } from '#src/api/auth/jwt.ts'
+import { HASH_VERSION, hashSessionToken, refreshJWT, shouldRefreshToken, verifyJWT, verifySessionTokenHash } from '#src/api/auth/jwt.ts'
 
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { AdminRole } from '#src/db/types.ts'

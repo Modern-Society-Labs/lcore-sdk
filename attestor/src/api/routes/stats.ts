@@ -11,7 +11,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
-import { parseQuery, sendError, sendJson } from 'src/api/utils/http.ts'
+import { parseQuery, sendError, sendJson } from '#src/api/utils/http.ts'
 
 import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 

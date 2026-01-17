@@ -1,0 +1,12 @@
+{
+  "name": "lcore-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "L{CORE} SDK - IoT attestation layer for Cartesi rollups",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "test:did": "node --experimental-strip-types --test tests/attestor/did.test.ts",
+    "test:device": "node --experimental-strip-types --test tests/attestor/device.test.ts"
+  }
+}
