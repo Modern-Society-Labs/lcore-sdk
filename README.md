@@ -4,14 +4,7 @@ Privacy-preserving IoT attestation layer built on [Cartesi](https://cartesi.io) 
 
 ## Overview
 
-L{CORE} enables **trustless verification of IoT and off-chain data** for blockchain applications. Devices sign data with decentralized identities (did:key), which is verified and stored in a deterministic Cartesi rollup.
-
-### Features
-
-- **Device Identity** — did:key based identity with ES256K signatures
-- **Privacy Buckets** — Discretize sensitive data (e.g., "temp > 30°C" instead of exact values)
-- **Deterministic Storage** — SQLite on Cartesi for verifiable queries
-- **Multi-Platform SDKs** — Python, TypeScript, and C for embedded devices
+L{CORE} enables trustless verification of IoT and off-chain data for blockchain applications. Devices sign data with decentralized identities (did:key), verified and stored in a deterministic Cartesi rollup.
 
 ## Installation
 
@@ -54,7 +47,7 @@ const result = await lcore.submitDeviceData(device, {
 
 ### C (Embedded)
 
-See [packages/c/README.md](packages/c/README.md) for ESP32, Arduino, and ARM integration.
+See [packages/c/README.md](packages/c/README.md) for ESP32, Arduino, and ARM.
 
 ## Self-Hosting
 
@@ -62,49 +55,21 @@ See [packages/c/README.md](packages/c/README.md) for ESP32, Arduino, and ARM int
 git clone https://github.com/Modern-Society-Labs/lcore-sdk.git
 cd lcore-sdk
 cp .env.example .env
-# Edit .env with your RPC endpoint and wallet
-
 docker-compose up -d
 ```
 
 ## Architecture
 
 ```
-Device (did:key) → Attestor (verify signature) → Cartesi (SQLite) → Arbitrum
+Device (did:key) → Attestor → Cartesi (SQLite) → Arbitrum
 ```
-
-## Project Structure
-
-```
-lcore-sdk/
-├── packages/
-│   ├── python/          # pip install lcore-sdk
-│   ├── typescript/      # @localecore/lcore-sdk
-│   └── c/               # Embedded C library
-├── attestor/            # Verification server
-├── cartesi/             # Rollup application
-└── docker-compose.yml   # Self-hosting
-```
-
-## Testnet
-
-| Service | Endpoint |
-|---------|----------|
-| Attestor | `http://104.197.228.179:8001` |
-| Cartesi | `http://34.70.167.143:10000` |
 
 ## Credits
 
-Built on:
-
-- [Reclaim Protocol](https://reclaimprotocol.org) — zkTLS attestation infrastructure
-- [Cartesi](https://cartesi.io) — Deterministic rollups with Linux runtime
-- [Arbitrum](https://arbitrum.io) — L2 settlement layer
+- [Reclaim Protocol](https://reclaimprotocol.org)
+- [Cartesi](https://cartesi.io)
+- [Arbitrum](https://arbitrum.io)
 
 ## License
 
 AGPL-3.0
-
----
-
-**[Modern Society Labs](https://github.com/Modern-Society-Labs)**
