@@ -1,10 +1,29 @@
-# L{CORE} SDK
+# L{CORE}
 
-Privacy-preserving IoT attestation layer built on [Cartesi](https://cartesi.io) rollups and [Reclaim Protocol](https://reclaimprotocol.org).
+**Open attestation infrastructure for the sovereign web.**
 
-## Overview
+L{CORE} is a complete, self-hostable stack for device and data attestation. It combines TEE-verified execution, on-chain settlement with fraud proofs, and SDKs for embedded devices—all open source, all deploy-anywhere.
 
-L{CORE} enables trustless verification of IoT and off-chain data for blockchain applications. Devices sign data with decentralized identities (did:key), verified and stored in a deterministic Cartesi rollup.
+**No tokens. No fees. No lock-in.**
+
+## Who It's For
+
+- **Cities & Governments** — Infrastructure you control, no external dependencies
+- **Enterprises** — Self-host, audit the code, own your attestation layer
+- **DePIN Builders** — Device attestation without ecosystem lock-in
+- **L2s & Chains** — Add attestation capabilities without adopting another protocol
+
+## Why L{CORE}?
+
+**No Lock-In** — Deploy on any EVM chain. Run on any infrastructure. Switch chains without rewriting your application.
+
+**No Fees** — Zero protocol fees. Zero token requirements. You pay gas costs on your chosen chain—that's it.
+
+**Full Compute** — Not a sandbox. Full Linux environment. Run SQLite, Python libraries, existing codebases—anything that runs on Linux.
+
+**Self-Sovereign** — Run your own attestors. Own your infrastructure. No dependency on external networks or third-party uptime.
+
+**Device-First** — C SDK for resource-constrained embedded devices. Real IoT attestation, not just mobile apps.
 
 ## Installation
 
@@ -58,18 +77,33 @@ cp .env.example .env
 docker-compose up -d
 ```
 
+## Project Structure
+
+```
+lcore-sdk/
+├── packages/
+│   ├── python/          # pip install lcore-sdk
+│   ├── typescript/      # @localecore/lcore-sdk
+│   └── c/               # Embedded C library
+├── attestor/            # Verification server (fork of Reclaim attestor-core)
+├── cartesi/             # Rollup application
+└── docker-compose.yml   # Self-hosting
+```
+
 ## Architecture
 
 ```
-Device (did:key) → Attestor → Cartesi (SQLite) → Arbitrum
+Device (did:key) → Attestor → Cartesi (SQLite) → EVM
 ```
 
 ## Credits
 
-- [Reclaim Protocol](https://reclaimprotocol.org)
-- [Cartesi](https://cartesi.io)
-- [Arbitrum](https://arbitrum.io)
+Built on open-source infrastructure:
+
+- [Reclaim Protocol](https://reclaimprotocol.org) — Attestor built on [reclaimprotocol/attestor-core](https://github.com/reclaimprotocol/attestor-core)
+- [Cartesi](https://cartesi.io) — Full Linux runtime with fraud proofs
+- [Arbitrum](https://arbitrum.io) — Default L2 settlement (deploy on any EVM)
 
 ## License
 
-AGPL-3.0
+AGPL-3.0 — Open source, fork it, modify it, audit it. Derivative works must also be open-sourced.
