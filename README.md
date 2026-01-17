@@ -1,162 +1,110 @@
 # L{CORE} SDK
 
-Privacy-preserving attestation layer for off-chain data, combining TEE-based verification with Cartesi rollups for deterministic storage.
+Privacy-preserving IoT attestation layer built on [Cartesi](https://cartesi.io) rollups and [Reclaim Protocol](https://reclaimprotocol.org).
 
-By [Modern Society Labs](https://github.com/Modern-Society-Labs).
+## Overview
 
-## What is L{CORE}?
+L{CORE} enables **trustless verification of IoT and off-chain data** for blockchain applications. Devices sign data with decentralized identities (did:key), which is verified and stored in a deterministic Cartesi rollup.
 
-L{CORE} enables **trustless verification of off-chain data** for blockchain applications. It solves the fundamental problem that blockchains can only verify on-chain data, but real-world applications need external data (APIs, IoT sensors, databases) without trusting a central authority.
+### Features
 
-**Key Features:**
+- **Device Identity** — did:key based identity with ES256K signatures
+- **Privacy Buckets** — Discretize sensitive data (e.g., "temp > 30°C" instead of exact values)
+- **Deterministic Storage** — SQLite on Cartesi for verifiable queries
+- **Multi-Platform SDKs** — Python, TypeScript, and C for embedded devices
 
-- **zkTLS Attestation** - Cryptographic proofs of HTTP responses
-- **Privacy Buckets** - Discretize sensitive data (e.g., "income > $50k" instead of exact amount)
-- **Deterministic Storage** - SQLite on Cartesi for verifiable queries
-- **No Oracles** - Direct verification, no trusted third parties
+## Installation
 
-## Quick Start
+### Python
 
-### Option 1: Use the SDK (Recommended)
+```bash
+pip install lcore-sdk
+```
+
+```python
+from lcore import LCore, DeviceIdentity
+
+device = DeviceIdentity.generate()
+
+async with LCore(attestor_url="http://localhost:8001") as lcore:
+    result = await lcore.submit_device_data(
+        device=device,
+        payload={"temperature": 23.4, "humidity": 65}
+    )
+    print(f"TX: {result.tx_hash}")
+```
+
+### TypeScript
 
 ```bash
 npm install @localecore/lcore-sdk
 ```
 
 ```typescript
-import { LCore } from '@localecore/lcore-sdk'
+import { LCore, DeviceIdentity } from '@localecore/lcore-sdk'
 
-const lcore = new LCore({
-  attestorUrl: 'http://localhost:8001',
-  cartesiUrl: 'http://localhost:10000',
-  dappAddress: '0xYourDappAddress',
-})
+const device = DeviceIdentity.generate()
+const lcore = new LCore({ attestorUrl: 'http://localhost:8001' })
 
-// Attest data from any HTTP source
-const result = await lcore.attest({
-  provider: 'http',
-  params: {
-    url: 'https://api.example.com/data',
-    responseRedactions: [{ jsonPath: 'temperature' }]
-  }
-})
-
-// Query attested data
-const data = await lcore.query({
-  type: 'attestation',
-  params: { claimId: result.claimId }
+const result = await lcore.submitDeviceData(device, {
+  temperature: 23.4,
+  humidity: 65
 })
 ```
 
-### Option 2: Self-Host with Docker
+### C (Embedded)
+
+See [packages/c/README.md](packages/c/README.md) for ESP32, Arduino, and ARM integration.
+
+## Self-Hosting
 
 ```bash
-# Clone and configure
 git clone https://github.com/Modern-Society-Labs/lcore-sdk.git
 cd lcore-sdk
 cp .env.example .env
-# Edit .env with your values
+# Edit .env with your RPC endpoint and wallet
 
-# Start services
 docker-compose up -d
-
-# Verify
-curl http://localhost:8001/healthcheck
 ```
-
-See [Self-Hosting Guide](docs/SELF-HOSTING.md) for full instructions.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Your Application                              │
-│                                                                         │
-│   ┌───────────────────┐     ┌───────────────────┐     ┌──────────────┐ │
-│   │  lcore-sdk        │     │  Attestor         │     │ Cartesi Node │ │
-│   │  (npm package)    │     │  (TEE/zkTLS)      │     │ (SQLite)     │ │
-│   │                   │     │                   │     │              │ │
-│   │  lcore.attest()   │────▶│  Verify & Sign    │────▶│  Store &     │ │
-│   │  lcore.query()    │◀────│                   │◀────│  Query       │ │
-│   └───────────────────┘     └───────────────────┘     └──────────────┘ │
-│                                      │                       │         │
-│                                      └───────────────────────┘         │
-│                                               │                        │
-│                                               ▼                        │
-│                                    ┌───────────────────┐               │
-│                                    │  Arbitrum Sepolia │               │
-│                                    │  (Settlement)     │               │
-│                                    └───────────────────┘               │
-└─────────────────────────────────────────────────────────────────────────┘
+Device (did:key) → Attestor (verify signature) → Cartesi (SQLite) → Arbitrum
 ```
-
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [SDK Usage](docs/SDK-USAGE.md) | TypeScript SDK reference |
-| [Self-Hosting](docs/SELF-HOSTING.md) | Run your own infrastructure |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables |
-| [IoT Patterns](memory-bank/iot-providers.md) | AWS IoT, Azure, GCP examples |
 
 ## Project Structure
 
 ```
 lcore-sdk/
 ├── packages/
-│   └── sdk/                  # @localecore/lcore-sdk npm package
-├── attestor/                 # TEE-based attestation server
-│   ├── src/
-│   │   ├── api/              # REST API routes
-│   │   ├── lcore/            # Cartesi integration
-│   │   └── providers/        # Data providers
-│   └── docs/                 # Attestor documentation
-├── cartesi/                  # Deterministic compute layer
-│   ├── src/
-│   │   ├── handlers/         # L{CORE} handlers (privacy, buckets)
-│   │   └── db.ts             # SQLite schema
-│   └── Dockerfile            # RISC-V build
-├── docs/                     # User documentation
-├── memory-bank/              # Architecture decisions & roadmap
-├── docker-compose.yml        # Self-hosting template
-└── .env.example              # Configuration template
+│   ├── python/          # pip install lcore-sdk
+│   ├── typescript/      # @localecore/lcore-sdk
+│   └── c/               # Embedded C library
+├── attestor/            # Verification server
+├── cartesi/             # Rollup application
+└── docker-compose.yml   # Self-hosting
 ```
 
-## Use Cases
+## Testnet
 
-- **IoT Data Attestation** - Verify sensor readings without exposing raw data
-- **Financial Verification** - Prove income brackets without revealing exact amounts
-- **Identity Claims** - Attest attributes without full disclosure
-- **API Data Proofs** - Verifiable snapshots of external API responses
+| Service | Endpoint |
+|---------|----------|
+| Attestor | `http://104.197.228.179:8001` |
+| Cartesi | `http://34.70.167.143:10000` |
 
-## Roadmap
+## Credits
 
-See [roadmap-pending.md](memory-bank/roadmap-pending.md) for current status.
+Built on:
 
-**Completed:**
-
-- [x] TEE attestation infrastructure
-- [x] Cartesi privacy layer (buckets, encryption)
-- [x] HTTP provider for API attestation
-- [x] TypeScript SDK
-- [x] Docker Compose self-hosting
-
-**Phase 2 (Planned):**
-
-- [ ] Device SDK HTTP client (direct IoT attestation)
-- [ ] EigenCloud deployment automation
-- [ ] Additional provider types
-
-## Contributing
-
-Contributions welcome! Please read the existing code patterns before submitting PRs.
+- [Reclaim Protocol](https://reclaimprotocol.org) — zkTLS attestation infrastructure
+- [Cartesi](https://cartesi.io) — Deterministic rollups with Linux runtime
+- [Arbitrum](https://arbitrum.io) — L2 settlement layer
 
 ## License
 
-AGPL v3
+AGPL-3.0
 
-## Related
+---
 
-- [Reclaim Protocol](https://reclaimprotocol.org) - zkTLS attestation (upstream)
-- [Cartesi](https://cartesi.io) - Deterministic rollups
-- [Arbitrum](https://arbitrum.io) - L2 settlement
+**[Modern Society Labs](https://github.com/Modern-Society-Labs)**
