@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws'
 
 import { handleApiRequest, handleHealthCheck } from '#src/api/routes/index.ts'
 import { API_SERVER_PORT, BROWSER_RPC_PATHNAME, WS_PATHNAME } from '#src/config/index.ts'
-import { initDecryption } from '#src/lcore/index.ts'
+import { initDecryption, initInputEncryption } from '#src/lcore/index.ts'
 import { AttestorServerSocket } from '#src/server/socket.ts'
 import { getAttestorAddress } from '#src/server/utils/generics.ts'
 import { addKeepAlive } from '#src/server/utils/keep-alive.ts'
@@ -74,8 +74,9 @@ function isBodyTooLarge(req: IncomingMessage): boolean {
  * and listens on the given port.
  */
 export async function createServer(port = PORT) {
-	// Initialize L{CORE} decryption for privacy-preserving responses
-	initDecryption()
+	// Initialize L{CORE} encryption/decryption for privacy-preserving communication
+	initDecryption()       // For decrypting query responses from Cartesi
+	initInputEncryption()  // For encrypting device inputs to Cartesi InputBox
 
 	const http = createHttpServer()
 	const serveBrowserRpc = serveStatic(

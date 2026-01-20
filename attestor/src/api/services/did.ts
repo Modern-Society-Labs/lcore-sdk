@@ -11,6 +11,20 @@ import { sha256 } from '@noble/hashes/sha256'
 import { base58btc } from 'multiformats/bases/base58'
 
 /**
+ * Quick format validation for did:key (does not fully parse)
+ *
+ * Use this for fast validation before passing to Cartesi for full verification.
+ * Returns true if the format looks correct (starts with did:key:z).
+ *
+ * @param did - The did:key identifier to validate
+ * @returns True if format appears valid
+ */
+export function isValidDIDKeyFormat(did: string): boolean {
+	// Basic format check - full verification happens in Cartesi
+	return did.startsWith('did:key:z') && did.length > 15
+}
+
+/**
  * Parse a did:key identifier and extract the raw public key bytes
  *
  * did:key format: did:key:z<multibase-encoded-multicodec-pubkey>

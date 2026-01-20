@@ -40,5 +40,10 @@ ENV LCORE_ENABLED=1
 # docker run --user root ... OR in docker-compose: user: root
 USER attestor
 
-CMD ["node", "lib/start-server.bundle.mjs"]
+# Labels for EigenCloud TEE
+LABEL tee.launch_policy.log_redirect="always"
+LABEL tee.launch_policy.monitoring_memory_allow="always"
+
 EXPOSE 8001
+
+CMD ["node", "lib/start-server.bundle.mjs"]

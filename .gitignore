@@ -9,6 +9,7 @@ node_modules/
 
 # Build artifacts
 dist/
+build/
 *.tsbuildinfo
 coverage/
 
@@ -27,3 +28,15 @@ cert/
 *.pem
 *.key
 *.p12
+
+# Memory bank (internal context with sensitive data)
+memory-bank/
+
+# Documentation content (separate repo)
+docs-content-lcore/
+
+# Internal security documentation
+SECURITY-ACCESS-CONTROL.md
+
+# Cartesi build artifacts
+.cartesi/

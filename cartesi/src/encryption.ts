@@ -62,6 +62,32 @@ export function initEncryptionSchema(): void {
 
 // ============= Key Management =============
 
+// In-memory admin public key for encryption (alternative to database)
+let adminPublicKeyMemory: Uint8Array | null = null;
+
+/**
+ * Initialize output encryption with the admin public key.
+ * This stores the key in memory for use during the session.
+ *
+ * For production, you may prefer setEncryptionKey() which persists to database.
+ *
+ * @param publicKeyBase64 - Base64-encoded 32-byte NaCl public key
+ */
+export function initEncryption(publicKeyBase64: string): void {
+  try {
+    adminPublicKeyMemory = base64ToUint8Array(publicKeyBase64);
+
+    if (adminPublicKeyMemory.length !== 32) {
+      throw new Error(`Invalid public key length: expected 32 bytes, got ${adminPublicKeyMemory.length}`);
+    }
+
+    console.log('[LCORE] Output encryption initialized (in-memory)');
+  } catch (e) {
+    console.error('[LCORE] Failed to initialize encryption:', e);
+    adminPublicKeyMemory = null;
+  }
+}
+
 /**
  * Set the admin encryption public key.
  * This should only be called once at deployment (or during key rotation).
@@ -129,9 +155,26 @@ export function getActiveEncryptionConfig(): EncryptionConfig | null {
 
 /**
  * Check if encryption is configured and ready.
+ * Checks both in-memory key and database-stored key.
  */
 export function isEncryptionConfigured(): boolean {
-  return getActiveEncryptionConfig() !== null;
+  return adminPublicKeyMemory !== null || getActiveEncryptionConfig() !== null;
+}
+
+/**
+ * Get the admin public key (from memory or database).
+ */
+function getAdminPublicKey(): Uint8Array | null {
+  if (adminPublicKeyMemory) {
+    return adminPublicKeyMemory;
+  }
+
+  const config = getActiveEncryptionConfig();
+  if (config) {
+    return base64ToUint8Array(config.public_key);
+  }
+
+  return null;
 }
 
 // ============= Encryption Functions =============
@@ -147,17 +190,14 @@ export function isEncryptionConfigured(): boolean {
  * @throws Error if encryption is not configured
  */
 export function encryptOutput(data: unknown): EncryptedOutput {
-  const config = getActiveEncryptionConfig();
-  if (!config) {
+  const adminPublicKey = getAdminPublicKey();
+  if (!adminPublicKey) {
     throw new Error('Encryption not configured - admin public key not set');
   }
 
   // Convert data to string
   const plaintext = typeof data === 'string' ? data : JSON.stringify(data);
   const plaintextBytes = new TextEncoder().encode(plaintext);
-
-  // Decode admin public key
-  const adminPublicKey = base64ToUint8Array(config.public_key);
 
   // Generate ephemeral keypair for this message (forward secrecy)
   const ephemeral = nacl.box.keyPair();
@@ -267,3 +307,149 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
  * 2. Use a deterministic ephemeral key derivation scheme
  * But this would weaken security (no forward secrecy).
  */
+
+// ============= Input Decryption (for device attestation privacy) =============
+
+/**
+ * INPUT DECRYPTION MODULE
+ *
+ * This module handles decryption of inputs that were encrypted by the Attestor/Relay
+ * before being submitted to the InputBox. This ensures device data remains private
+ * on-chain (only ciphertext visible) while Cartesi can decrypt and verify.
+ *
+ * Flow:
+ * Device → Attestor (encrypts with INPUT public key) → InputBox (ciphertext) → Cartesi (decrypts here)
+ *
+ * The input keypair is SEPARATE from the output keypair:
+ * - Output keypair: Cartesi encrypts → Attestor decrypts (existing)
+ * - Input keypair: Attestor encrypts → Cartesi decrypts (this module)
+ */
+
+let inputPrivateKey: Uint8Array | null = null;
+
+/**
+ * Initialize input decryption with the private key.
+ * Call this at startup with the LCORE_INPUT_PRIVATE_KEY environment variable.
+ *
+ * @param privateKeyBase64 - Base64-encoded 32-byte NaCl private key
+ */
+export function initInputDecryption(privateKeyBase64: string): void {
+  try {
+    inputPrivateKey = base64ToUint8Array(privateKeyBase64);
+
+    if (inputPrivateKey.length !== 32) {
+      throw new Error(`Invalid private key length: expected 32 bytes, got ${inputPrivateKey.length}`);
+    }
+
+    console.log('[LCORE] Input decryption initialized');
+  } catch (e) {
+    console.error('[LCORE] Failed to initialize input decryption:', e);
+    inputPrivateKey = null;
+  }
+}
+
+/**
+ * Check if input decryption is configured and ready.
+ */
+export function isInputDecryptionConfigured(): boolean {
+  return inputPrivateKey !== null;
+}
+
+/**
+ * Decrypt an encrypted input payload.
+ *
+ * This is used to decrypt device attestation data that was encrypted
+ * by the Attestor before being submitted to the InputBox.
+ *
+ * IMPORTANT: nacl.box.open() is DETERMINISTIC - given the same inputs,
+ * it always produces the same output. This is safe for Cartesi's
+ * fraud-proof verification.
+ *
+ * @param encrypted - The encrypted payload (EncryptedOutput format)
+ * @returns Decrypted data parsed as JSON
+ * @throws Error if decryption fails or is not configured
+ */
+export function decryptInput<T = unknown>(encrypted: EncryptedOutput): T {
+  if (!inputPrivateKey) {
+    throw new Error('Input decryption not configured - LCORE_INPUT_PRIVATE_KEY not set');
+  }
+
+  // Validate version
+  if (encrypted.version !== 1) {
+    throw new Error(`Unsupported encryption version: ${encrypted.version}`);
+  }
+
+  // Validate algorithm
+  if (encrypted.algorithm !== 'nacl-box') {
+    throw new Error(`Unsupported algorithm: ${encrypted.algorithm}`);
+  }
+
+  // Decode components
+  const nonce = base64ToUint8Array(encrypted.nonce);
+  const ciphertext = base64ToUint8Array(encrypted.ciphertext);
+  const senderPublicKey = base64ToUint8Array(encrypted.publicKey);
+
+  // Validate lengths
+  if (nonce.length !== nacl.box.nonceLength) {
+    throw new Error(`Invalid nonce length: expected ${nacl.box.nonceLength}, got ${nonce.length}`);
+  }
+
+  if (senderPublicKey.length !== nacl.box.publicKeyLength) {
+    throw new Error(`Invalid public key length: expected ${nacl.box.publicKeyLength}, got ${senderPublicKey.length}`);
+  }
+
+  // Decrypt using NaCl box.open (DETERMINISTIC)
+  const decrypted = nacl.box.open(
+    ciphertext,
+    nonce,
+    senderPublicKey,
+    inputPrivateKey
+  );
+
+  if (!decrypted) {
+    throw new Error('Decryption failed - invalid ciphertext or key mismatch');
+  }
+
+  // Parse JSON
+  const plaintext = new TextDecoder().decode(decrypted);
+  return JSON.parse(plaintext) as T;
+}
+
+/**
+ * Check if a payload appears to be an encrypted input.
+ */
+export function isEncryptedInput(
+  payload: unknown
+): payload is { encrypted: true; payload: EncryptedOutput } {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+
+  const obj = payload as Record<string, unknown>;
+
+  if (obj.encrypted !== true) {
+    return false;
+  }
+
+  if (!obj.payload || typeof obj.payload !== 'object') {
+    return false;
+  }
+
+  const inner = obj.payload as Record<string, unknown>;
+
+  return (
+    inner.version === 1 &&
+    inner.algorithm === 'nacl-box' &&
+    typeof inner.nonce === 'string' &&
+    typeof inner.ciphertext === 'string' &&
+    typeof inner.publicKey === 'string'
+  );
+}
+
+/**
+ * Check if output encryption is configured (alias for isEncryptionConfigured).
+ * Used by the output utility module.
+ */
+export function isOutputEncryptionConfigured(): boolean {
+  return isEncryptionConfigured();
+}

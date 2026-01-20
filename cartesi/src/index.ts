@@ -14,6 +14,7 @@ import createClient from 'openapi-fetch';
 import { components, paths } from './schema';
 import { initDatabase } from './db';
 import { createRouter, RouteConfig } from './router';
+import { initEncryption, initInputDecryption } from './encryption';
 import {
   // Entity handlers
   handleCreateEntity,
@@ -35,6 +36,13 @@ import {
   // Stats handlers
   handleInspectStats,
 } from './handlers';
+import {
+  // Device attestation handlers
+  handleDeviceAttestation,
+  handleInspectDeviceAttestations,
+  handleInspectDeviceLatest,
+  handleInspectDeviceStats,
+} from './handlers/lcore-device';
 
 // ============= Type Definitions =============
 
@@ -74,6 +82,9 @@ const routeConfig: RouteConfig = {
     // Approval workflow
     approve: handleApprove,
     reject: handleReject,
+
+    // Device attestation (fraud-provable JWS verification)
+    device_attestation: handleDeviceAttestation,
   },
   inspect: {
     // Entity queries
@@ -93,6 +104,11 @@ const routeConfig: RouteConfig = {
 
     // Statistics
     stats: handleInspectStats,
+
+    // Device attestation queries
+    device_attestations: handleInspectDeviceAttestations,
+    device_latest: handleInspectDeviceLatest,
+    device_stats: handleInspectDeviceStats,
   },
 };
 
@@ -104,8 +120,24 @@ const main = async () => {
   await initDatabase();
   console.log('Database initialized');
 
-  // Add any additional initialization here
-  // For example: initCustomTable();
+  // Initialize encryption/decryption
+  // Output encryption (for query responses)
+  const adminPublicKey = process.env.LCORE_ADMIN_PUBLIC_KEY;
+  if (adminPublicKey) {
+    initEncryption(adminPublicKey);
+    console.log('Output encryption initialized');
+  } else {
+    console.warn('[LCORE] LCORE_ADMIN_PUBLIC_KEY not set - output encryption disabled');
+  }
+
+  // Input decryption (for device attestation privacy)
+  const inputPrivateKey = process.env.LCORE_INPUT_PRIVATE_KEY;
+  if (inputPrivateKey) {
+    initInputDecryption(inputPrivateKey);
+    console.log('Input decryption initialized');
+  } else {
+    console.warn('[LCORE] LCORE_INPUT_PRIVATE_KEY not set - input decryption disabled');
+  }
 
   // Create router with all handlers
   const router = createRouter(routeConfig);

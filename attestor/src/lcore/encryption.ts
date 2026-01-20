@@ -438,6 +438,115 @@ export function isEncryptedOutput(
 	)
 }
 
+// ============= Input Encryption (for device attestation privacy) =============
+
+/**
+ * INPUT ENCRYPTION MODULE
+ *
+ * This module handles encryption of device attestation data BEFORE it is
+ * submitted to the InputBox. This ensures device data remains private
+ * on-chain (only ciphertext visible on the blockchain).
+ *
+ * Flow:
+ * Device → Attestor (encrypts here with INPUT public key) → InputBox (ciphertext) → Cartesi (decrypts)
+ *
+ * The input keypair is SEPARATE from the output keypair:
+ * - Output keypair: Cartesi encrypts → Attestor decrypts (existing, above)
+ * - Input keypair: Attestor encrypts (this) → Cartesi decrypts
+ */
+
+let inputPublicKey: Uint8Array | null = null
+
+/**
+ * Initialize input encryption with the public key.
+ * Call this at startup - reads from LCORE_INPUT_PUBLIC_KEY environment variable.
+ */
+export function initInputEncryption(): void {
+	const publicKeyBase64 = getEnvVariable('LCORE_INPUT_PUBLIC_KEY')
+
+	if(!publicKeyBase64) {
+		console.warn('[LCORE] LCORE_INPUT_PUBLIC_KEY not set - input encryption disabled')
+		return
+	}
+
+	try {
+		inputPublicKey = base64ToUint8Array(publicKeyBase64)
+
+		if(inputPublicKey.length !== 32) {
+			throw new Error(`Invalid public key length: expected 32 bytes, got ${inputPublicKey.length}`)
+		}
+
+		console.log('[LCORE] Input encryption initialized')
+	} catch(e) {
+		console.error('[LCORE] Failed to initialize input encryption:', e)
+		inputPublicKey = null
+	}
+}
+
+/**
+ * Check if input encryption is configured and ready.
+ */
+export function isInputEncryptionConfigured(): boolean {
+	return inputPublicKey !== null
+}
+
+/**
+ * Encrypt data for submission to InputBox.
+ *
+ * This encrypts device attestation payloads before they are submitted
+ * to the Cartesi InputBox, ensuring the data is not visible on-chain.
+ *
+ * Uses NaCl box with an ephemeral keypair for forward secrecy.
+ *
+ * @param data - Data to encrypt (will be JSON.stringified)
+ * @returns EncryptedOutput object ready for submission
+ * @throws Error if input encryption is not configured
+ */
+export function encryptInput(data: unknown): EncryptedOutput {
+	if(!inputPublicKey) {
+		throw new Error('Input encryption not configured - LCORE_INPUT_PUBLIC_KEY not set')
+	}
+
+	// Convert data to string
+	const plaintext = typeof data === 'string' ? data : JSON.stringify(data)
+	const plaintextBytes = new TextEncoder().encode(plaintext)
+
+	// Generate ephemeral keypair for this message (forward secrecy)
+	const ephemeral = nacl.box.keyPair()
+
+	// Generate random nonce
+	const nonce = nacl.randomBytes(nacl.box.nonceLength)
+
+	// Encrypt using NaCl box
+	const ciphertext = nacl.box(
+		plaintextBytes,
+		nonce,
+		inputPublicKey,
+		ephemeral.secretKey
+	)
+
+	return {
+		version: 1,
+		algorithm: 'nacl-box',
+		nonce: uint8ArrayToBase64(nonce),
+		ciphertext: uint8ArrayToBase64(ciphertext),
+		publicKey: uint8ArrayToBase64(ephemeral.publicKey),
+	}
+}
+
+/**
+ * Wrap encrypted input in the standard envelope format.
+ *
+ * @param data - Data to encrypt
+ * @returns Object with encrypted flag and payload
+ */
+export function encryptInputEnvelope(data: unknown): { encrypted: true; payload: EncryptedOutput } {
+	return {
+		encrypted: true,
+		payload: encryptInput(data),
+	}
+}
+
 // ============= Helper Functions =============
 
 /**

@@ -137,6 +137,27 @@ export function isVerboseLogging(): boolean {
   return envValue === 'true' || envValue === '1';
 }
 
+// ============= Output Configuration =============
+
+/**
+ * Output mode for query responses.
+ * Options:
+ *   'encrypted' - All outputs encrypted (default, requires attestor to decrypt)
+ *   'raw'       - All outputs raw (for public data use cases)
+ *   'custom'    - Developer implements their own outputHandler()
+ *
+ * Set LCORE_OUTPUT_MODE in environment to customize.
+ */
+export type OutputMode = 'encrypted' | 'raw' | 'custom';
+
+export function getOutputMode(): OutputMode {
+  const envValue = process.env.LCORE_OUTPUT_MODE;
+  if (envValue === 'raw' || envValue === 'custom' || envValue === 'encrypted') {
+    return envValue;
+  }
+  return 'encrypted'; // Default to encrypted for privacy
+}
+
 // ============= Rate Limiting Configuration =============
 
 /**
@@ -179,6 +200,7 @@ export interface AppConfig {
   maxPayloadSize: number;
   defaultThreshold: number;
   proofExpirationMs: number;
+  outputMode: OutputMode;
 }
 
 let cachedConfig: AppConfig | null = null;
@@ -199,6 +221,7 @@ export function getConfig(): AppConfig {
     maxPayloadSize: getMaxPayloadSize(),
     defaultThreshold: getDefaultThreshold(),
     proofExpirationMs: getProofExpirationMs(),
+    outputMode: getOutputMode(),
   };
 
   return cachedConfig;

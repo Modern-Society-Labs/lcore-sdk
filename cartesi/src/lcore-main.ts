@@ -17,6 +17,7 @@ import { initDatabase } from './db';
 import { initLCoreSchema, getLCoreStats } from './lcore-db';
 import { createRouter } from './router';
 import { lcoreRouteConfig } from './handlers/lcore-index';
+import { initInputDecryption } from './encryption';
 
 // ============= Type Definitions =============
 
@@ -44,6 +45,15 @@ const main = async () => {
   console.log('Initializing L{CORE} schema...');
   initLCoreSchema();
   console.log('L{CORE} schema initialized');
+
+  // Initialize input decryption (for device attestation privacy)
+  const inputPrivateKey = process.env.LCORE_INPUT_PRIVATE_KEY;
+  if (inputPrivateKey) {
+    initInputDecryption(inputPrivateKey);
+    console.log('[LCORE] Input decryption initialized');
+  } else {
+    console.warn('[LCORE] LCORE_INPUT_PRIVATE_KEY not set - input decryption disabled');
+  }
 
   // Create router with L{CORE} handlers
   const router = createRouter(lcoreRouteConfig);

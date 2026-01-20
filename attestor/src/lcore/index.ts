@@ -33,6 +33,11 @@ export {
 	processLCoreResponseSync,
 	verifyDecryptionProof,
 	isEncryptedOutput,
+	// Input encryption (for device attestation privacy)
+	initInputEncryption,
+	isInputEncryptionConfigured,
+	encryptInput,
+	encryptInputEnvelope,
 	type EncryptedOutput,
 	type DecryptionResult,
 	type DecryptionError,

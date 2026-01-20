@@ -129,7 +129,7 @@ export async function handleInspectEncryptionConfig(
  * Simple boolean check for quick health checks.
  */
 export async function handleInspectEncryptionStatus(
-  query: InspectQuery
+  _query: InspectQuery
 ): Promise<unknown> {
   return {
     encryption_configured: isEncryptionConfigured(),

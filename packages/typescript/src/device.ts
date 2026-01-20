@@ -59,10 +59,8 @@ export function createJWS(payload: Record<string, unknown>, privateKey: Uint8Arr
   // Sign with secp256k1
   const signature = secp256k1.sign(msgHash, privateKey)
 
-  // Get raw r||s signature (64 bytes)
-  const sigBytes = new Uint8Array(64)
-  sigBytes.set(signature.r.toByteArray().slice(-32), 0)
-  sigBytes.set(signature.s.toByteArray().slice(-32), 32)
+  // Get raw r||s signature (64 bytes) using toCompactRawBytes
+  const sigBytes = signature.toCompactRawBytes()
 
   // Base64url encode signature
   const sigB64 = base64urlEncode(sigBytes)

@@ -4,14 +4,21 @@
  * Endpoint for IoT devices to submit signed sensor data directly.
  * Devices use did:key for identity and JWS for signature verification.
  *
+ * SECURITY MODEL:
+ * - This route acts as a THIN RELAY - it encrypts but does NOT verify signatures
+ * - All JWS verification happens inside Cartesi (fraud-provable)
+ * - Inputs are encrypted before hitting the InputBox (privacy)
+ * - Anyone can re-run Cartesi and verify every signature was valid
+ *
  * POST /api/device/submit - Submit signed device data
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
 import { parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
-import { parseDIDKey, verifyJWS } from '#src/api/services/did.ts'
+import { isValidDIDKeyFormat } from '#src/api/services/did.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { ethers, Wallet } from 'ethers'
+import { encryptInputEnvelope, isInputEncryptionConfigured } from '#src/lcore/encryption.ts'
 
 // Reuse L{CORE} configuration
 const LCORE_RPC_URL = getEnvVariable('LCORE_RPC_URL') || ''
@@ -63,10 +70,15 @@ interface DeviceSubmission {
 
 /**
  * Submit device attestation to L{CORE} Cartesi rollup
+ *
+ * IMPORTANT: This function does NOT verify the JWS signature.
+ * Verification happens inside Cartesi (fraud-provable).
+ * This relay only encrypts and forwards.
  */
 async function submitDeviceAttestation(
 	deviceDid: string,
 	data: Record<string, unknown>,
+	signature: string,
 	timestamp: number
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
 	if (!LCORE_ENABLED) {
@@ -77,17 +89,31 @@ async function submitDeviceAttestation(
 		return { success: false, error: 'LCORE_DAPP_ADDRESS is required' }
 	}
 
+	// Input encryption is REQUIRED for privacy
+	if (!isInputEncryptionConfigured()) {
+		return {
+			success: false,
+			error: 'Input encryption not configured - LCORE_INPUT_PUBLIC_KEY required'
+		}
+	}
+
 	try {
 		const wallet = getWallet()
 		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
 
-		const inputData = hexEncode({
+		// Build payload WITH signature (Cartesi will verify)
+		const payload = {
 			action: 'device_attestation',
 			device_did: deviceDid,
 			data,
+			signature, // Pass through for Cartesi to verify (fraud-provable)
 			timestamp,
-			source: 'direct'
-		})
+			source: 'relay'
+		}
+
+		// ALWAYS encrypt - privacy before InputBox
+		const encryptedEnvelope = encryptInputEnvelope(payload)
+		const inputData = hexEncode(encryptedEnvelope)
 
 		// Submit to InputBox contract
 		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
@@ -112,6 +138,10 @@ async function submitDeviceAttestation(
 /**
  * POST /api/device/submit
  * Submit signed device sensor data
+ *
+ * NOTE: This endpoint does NOT verify the JWS signature.
+ * Signature verification happens inside Cartesi (fraud-provable).
+ * We only validate format here to fail fast on obviously bad requests.
  */
 async function handleDeviceSubmit(
 	req: IncomingMessage,
@@ -147,22 +177,17 @@ async function handleDeviceSubmit(
 		return sendError(res, 400, 'timestamp is too old or in the future')
 	}
 
-	// Parse did:key to extract public key
-	const publicKey = parseDIDKey(body.did)
-	if (!publicKey) {
+	// Basic DID format validation only (no signature verification here)
+	// Full verification happens in Cartesi (fraud-provable)
+	if (!isValidDIDKeyFormat(body.did)) {
 		return sendError(res, 400, 'Invalid did:key format. Expected did:key:z... with secp256k1 key')
 	}
 
-	// Verify JWS signature
-	const isValid = verifyJWS(body.signature, body.payload, publicKey)
-	if (!isValid) {
-		return sendError(res, 401, 'Invalid signature')
-	}
-
-	// Submit to Cartesi
+	// Submit to Cartesi (with signature for Cartesi to verify)
 	const result = await submitDeviceAttestation(
 		body.did,
 		body.payload,
+		body.signature, // Pass through - Cartesi verifies
 		body.timestamp
 	)
 

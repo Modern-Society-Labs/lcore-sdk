@@ -460,12 +460,24 @@ export function assertRejected(result: AdvanceResult, expectedError?: string): v
     throw new Error(`Expected status 'reject', got '${result.status}'`);
   }
   if (expectedError) {
+    // Check notices first (handler errors return JSON with 'error' field)
     const response = getResponse<{ error?: string }>(result);
-    if (!response?.error?.includes(expectedError)) {
-      throw new Error(
-        `Expected error containing '${expectedError}', got: ${JSON.stringify(response)}`
-      );
+    if (response?.error?.includes(expectedError)) {
+      return; // Found in JSON error field
     }
+
+    // Check reports for plain string messages (router-level rejections)
+    if (result.reports && result.reports.length > 0) {
+      const reportPayload = result.reports[0]?.payload || '';
+      if (reportPayload.includes(expectedError)) {
+        return; // Found in report payload
+      }
+    }
+
+    // Neither matched - throw error with both for debugging
+    throw new Error(
+      `Expected error containing '${expectedError}', got response: ${JSON.stringify(response)}, reports: ${JSON.stringify(result.reports?.map(r => r.payload))}`
+    );
   }
 }
 

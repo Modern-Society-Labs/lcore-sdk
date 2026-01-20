@@ -42,5 +42,11 @@ COPY --from=build-stage /opt/cartesi/dapp/node_modules/sql.js/dist/sql-wasm.wasm
 # Default for local development only - will be overridden in production
 ENV ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004"
 
+# Input decryption key for device attestation privacy
+# This key is baked into the machine image - Cartesi can decrypt encrypted inputs
+# Keypair: Private (here) -> Public (attestor LCORE_INPUT_PUBLIC_KEY)
+# IMPORTANT: Generate your own keypair before deploying! See /SECURITY-ACCESS-CONTROL.md
+ENV LCORE_INPUT_PRIVATE_KEY=REPLACE_WITH_YOUR_BASE64_PRIVATE_KEY
+
 ENTRYPOINT ["rollup-init"]
 CMD ["node", "lcore-main.js"]

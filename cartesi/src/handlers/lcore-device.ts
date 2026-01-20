@@ -1,8 +1,13 @@
 /**
  * L{CORE} SDK - Device Attestation Handler
  *
- * Simple handler for IoT device attestation via did:key.
- * Stores device data directly without requiring provider schema infrastructure.
+ * Fraud-provable handler for IoT device attestation via did:key.
+ *
+ * SECURITY MODEL:
+ * - All inputs MUST be encrypted (privacy before InputBox)
+ * - All JWS signatures are verified HERE in Cartesi (fraud-provable)
+ * - Anyone can re-run Cartesi and verify every signature was valid
+ * - No trusted attestor needed for verification
  *
  * This enables lightweight device attestation for IoT sensors that sign their
  * own data with secp256k1 keys (did:key format).
@@ -14,10 +19,37 @@ import {
   InspectQuery,
 } from '../router';
 import { getDatabase } from '../db';
+import type { EncryptedOutput } from '../encryption';
+import { verifyJWS, isValidDIDKey } from '../crypto/jws';
 
 // ============= Types =============
 
-interface DeviceAttestationPayload {
+/**
+ * Encrypted envelope from the attestor/relay.
+ */
+interface EncryptedDevicePayload {
+  encrypted: true;
+  payload: EncryptedOutput;
+}
+
+/**
+ * Decrypted device attestation payload.
+ * This is what's inside the encrypted envelope.
+ */
+interface DecryptedDevicePayload {
+  action: 'device_attestation';
+  device_did: string;
+  data: Record<string, unknown>;
+  signature: string;  // JWS to verify (FRAUD-PROVABLE)
+  timestamp: number;
+  source: string;
+}
+
+/**
+ * Legacy plaintext payload (for backward compatibility during transition).
+ * TODO: Remove after transition period.
+ */
+interface LegacyDeviceAttestationPayload {
   action: 'device_attestation';
   device_did: string;
   data: Record<string, unknown>;
@@ -40,51 +72,101 @@ export interface DeviceAttestation {
 /**
  * Handle device attestation from IoT devices
  *
- * Payload format (from attestor /api/device/submit):
+ * ENCRYPTED PAYLOAD FORMAT (required):
+ * {
+ *   encrypted: true,
+ *   payload: {
+ *     version: 1,
+ *     algorithm: 'nacl-box',
+ *     nonce: '...',
+ *     ciphertext: '...',
+ *     publicKey: '...'
+ *   }
+ * }
+ *
+ * DECRYPTED CONTENTS:
  * {
  *   action: 'device_attestation',
  *   device_did: 'did:key:z...',  // secp256k1 public key
  *   data: { temperature: 23.4, humidity: 65 },  // sensor data
+ *   signature: 'eyJhbGc...',  // JWS over data (verified here!)
  *   timestamp: 1705123456,  // unix timestamp
- *   source: 'direct'  // submission source
+ *   source: 'relay'  // submission source
  * }
  */
 export const handleDeviceAttestation = async (
   requestData: AdvanceRequestData,
   payload: unknown
 ): Promise<{ status: RequestHandlerResult; response?: unknown }> => {
-  const p = payload as DeviceAttestationPayload;
 
-  // Validate required fields
-  if (!p.device_did) {
+  // Note: Router already handles decryption at router.ts:204-219
+  // The payload we receive here is already decrypted
+  const decrypted = payload as DecryptedDevicePayload;
+
+  // Step 1: Validate required fields
+  if (!decrypted.device_did) {
     return {
       status: 'reject',
       response: { error: 'Missing required field: device_did' },
     };
   }
 
-  if (!p.data || typeof p.data !== 'object') {
+  if (!decrypted.data || typeof decrypted.data !== 'object') {
     return {
       status: 'reject',
       response: { error: 'Missing required field: data (must be an object)' },
     };
   }
 
-  if (typeof p.timestamp !== 'number') {
+  if (!decrypted.signature) {
+    return {
+      status: 'reject',
+      response: { error: 'Missing required field: signature (JWS required for verification)' },
+    };
+  }
+
+  if (typeof decrypted.timestamp !== 'number') {
     return {
       status: 'reject',
       response: { error: 'Missing required field: timestamp (must be a number)' },
     };
   }
 
-  // Validate did:key format (basic check)
-  if (!p.device_did.startsWith('did:key:z')) {
+  // Validate did:key format
+  if (!isValidDIDKey(decrypted.device_did)) {
     return {
       status: 'reject',
-      response: { error: 'Invalid device_did format. Expected did:key:z...' },
+      response: { error: 'Invalid device_did format. Expected did:key:z... with secp256k1 key' },
     };
   }
 
+  // Step 3: Verify JWS signature (FRAUD-PROVABLE)
+  // This is the key security property - verification happens in Cartesi
+  // Anyone can re-run Cartesi and verify this was done correctly
+  try {
+    const isValid = verifyJWS(
+      decrypted.signature,
+      decrypted.data,
+      decrypted.device_did
+    );
+
+    if (!isValid) {
+      return {
+        status: 'reject',
+        response: { error: 'Invalid device signature - JWS verification failed' },
+      };
+    }
+  } catch (e) {
+    return {
+      status: 'reject',
+      response: {
+        error: 'Signature verification failed',
+        details: e instanceof Error ? e.message : String(e),
+      },
+    };
+  }
+
+  // Step 4: Store the verified attestation
   try {
     const db = getDatabase();
 
@@ -93,10 +175,10 @@ export const handleDeviceAttestation = async (
       `INSERT INTO device_attestations (device_did, data, timestamp, source, input_index, created_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'))`,
       [
-        p.device_did,
-        JSON.stringify(p.data),
-        p.timestamp,
-        p.source || 'direct',
+        decrypted.device_did,
+        JSON.stringify(decrypted.data),
+        decrypted.timestamp,
+        decrypted.source || 'relay',
         requestData.metadata.input_index,
       ]
     );
@@ -110,9 +192,10 @@ export const handleDeviceAttestation = async (
       response: {
         success: true,
         id,
-        device_did: p.device_did,
-        timestamp: p.timestamp,
+        device_did: decrypted.device_did,
+        timestamp: decrypted.timestamp,
         input_index: requestData.metadata.input_index,
+        verified: true,  // Indicates JWS was verified
       },
     };
   } catch (error) {
