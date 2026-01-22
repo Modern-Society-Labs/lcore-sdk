@@ -1,0 +1,17 @@
+{
+  "name": "access-control-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone test for L{CORE} access control",
+  "type": "module",
+  "scripts": {
+    "test": "node test-access-control.js",
+    "test:local": "node test-local-access-control.js",
+    "test:encryption": "node test-local-encryption.js"
+  },
+  "dependencies": {
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "ethers": "^6.9.0"
+  }
+}

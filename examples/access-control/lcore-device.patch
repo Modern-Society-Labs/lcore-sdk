@@ -1,0 +1,55 @@
+--- cartesi/src/handlers/lcore-device.ts	2026-01-19 21:35:05
++++ examples/access-control-test/cartesi/src/handlers/lcore-device.ts	2026-01-21 17:55:23
+@@ -22,6 +22,14 @@
+ import type { EncryptedOutput } from '../encryption';
+ import { verifyJWS, isValidDIDKey } from '../crypto/jws';
+ 
++// ============= Access Control =============
++
++/**
++ * Only the deployer address can query device attestation data.
++ * This demonstrates address-based access control in Cartesi.
++ */
++const AUTHORIZED_ADDRESS = '0xYOUR_AUTHORIZED_ADDRESS_HERE';
++
+ // ============= Types =============
+ 
+ /**
+@@ -222,6 +230,18 @@
+ export const handleInspectDeviceAttestations = async (
+   query: InspectQuery
+ ): Promise<unknown> => {
++  // ACCESS CONTROL: Only deployer can query device attestations
++  // The requester address must be passed as a query parameter
++  const requester = query.params.sender?.toLowerCase();
++  if (!requester || requester !== AUTHORIZED_ADDRESS.toLowerCase()) {
++    return {
++      error: 'ACCESS DENIED',
++      message: 'Only the deployer address can query device attestations',
++      authorized: AUTHORIZED_ADDRESS,
++      requester: requester || 'none',
++    };
++  }
++
+   const { device_did, limit, offset } = query.params;
+ 
+   if (!device_did) {
+@@ -276,6 +296,18 @@
+ export const handleInspectDeviceLatest = async (
+   query: InspectQuery
+ ): Promise<unknown> => {
++  // ACCESS CONTROL: Only deployer can query device attestations
++  // The requester address must be passed as a query parameter
++  const requester = query.params.sender?.toLowerCase();
++  if (!requester || requester !== AUTHORIZED_ADDRESS.toLowerCase()) {
++    return {
++      error: 'ACCESS DENIED',
++      message: 'Only the deployer address can query device attestations',
++      authorized: AUTHORIZED_ADDRESS,
++      requester: requester || 'none',
++    };
++  }
++
+   const { device_did } = query.params;
+ 
+   if (!device_did) {
