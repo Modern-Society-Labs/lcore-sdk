@@ -9,6 +9,8 @@ export const DEFAULT_HTTPS_PORT = 443
 
 export const WS_PATHNAME = '/ws'
 
+export const LOG_STREAM_PATHNAME = '/ws/logs'
+
 export const BROWSER_RPC_PATHNAME = '/browser-rpc'
 
 export const DEFAULT_REMOTE_FILE_FETCH_BASE_URL = `${BROWSER_RPC_PATHNAME}/resources`

@@ -1,44 +1,50 @@
-FROM --platform=linux/amd64 node:20
+# ============= Build Stage =============
+FROM node:20 AS builder
 
-# Create non-root user for security
-# NOTE: TEE deployments may need to override this with --user root or via docker-compose
-RUN useradd -r -s /bin/false -d /app attestor
+# Install git for any git-based dependencies
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-# install git
-RUN apt update -y && apt upgrade -y && apt install git -y
+WORKDIR /build
 
-# ============= Build Attestor =============
-COPY ./package.json /app/
-COPY ./package-lock.json /app/
-COPY ./tsconfig.json /app/
-COPY ./tsconfig.build.json /app/
-RUN mkdir -p /app/src/scripts
-RUN echo '' > /app/src/scripts/prepare.sh
-RUN echo 'console.log("TMP")' > /app/src/index.ts
+# Copy package files first for better layer caching
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+
+# Create placeholder files to satisfy npm install
+RUN mkdir -p src/scripts && \
+    echo '' > src/scripts/prepare.sh && \
+    echo 'console.log("TMP")' > src/index.ts
+
+# Install all dependencies (including dev for building)
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Build production bundle
+RUN npm run build:prod
+
+# Download ZK files (these go into node_modules/@reclaimprotocol/zk-symmetric-crypto/)
+RUN npm run download:zk-files
+
+# Prune to production dependencies only
+RUN npm prune --production
+
+# ============= Production Stage =============
+FROM node:20-slim
 
 WORKDIR /app
 
-RUN npm i
-
-COPY ./ /app
-
-RUN npm run build:prod
-RUN npm run download:zk-files
-
-# Prune production deps
-RUN npm prune --production
-
-# Set ownership of app directory to non-root user
-RUN chown -R attestor:attestor /app
+# Copy only production artifacts from builder
+COPY --from=builder /build/lib ./lib
+COPY --from=builder /build/node_modules ./node_modules
+COPY --from=builder /build/package.json ./
 
 # Environment variables
 ENV NODE_ENV=production
 ENV LCORE_ENABLED=1
 
-# Switch to non-root user
-# NOTE: For TEE deployments requiring root access, override with:
-# docker run --user root ... OR in docker-compose: user: root
-USER attestor
+# NOTE: EigenCloud TEE requires root user for entrypoint injection
+# The TEE provides isolation security instead of container user separation
 
 # Labels for EigenCloud TEE
 LABEL tee.launch_policy.log_redirect="always"

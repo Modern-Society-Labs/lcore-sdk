@@ -11,6 +11,9 @@
 
 import http from 'http';
 import { URL } from 'url';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { WebSocketServer } = require('ws');
+import { logger, addLogClient } from './utils/logger';
 
 // ============= Types =============
 
@@ -126,7 +129,7 @@ function handleNotice(body: string, res: http.ServerResponse): void {
   if (currentRequest) {
     const data = JSON.parse(body);
     currentRequest.notices.push({ payload: data.payload });
-    console.log('[Notice]', hexToString(data.payload).substring(0, 100));
+    logger.info({ type: 'notice', payload: hexToString(data.payload).substring(0, 100) }, 'Notice received');
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true }));
@@ -139,7 +142,7 @@ function handleReport(body: string, res: http.ServerResponse): void {
   if (currentRequest) {
     const data = JSON.parse(body);
     currentRequest.reports.push({ payload: data.payload });
-    console.log('[Report]', hexToString(data.payload).substring(0, 200));
+    logger.info({ type: 'report', payload: hexToString(data.payload).substring(0, 200) }, 'Report received');
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true }));
@@ -155,7 +158,7 @@ function handleVoucher(body: string, res: http.ServerResponse): void {
       destination: data.destination,
       payload: data.payload,
     });
-    console.log('[Voucher]', data.destination);
+    logger.info({ type: 'voucher', destination: data.destination }, 'Voucher received');
   }
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ ok: true }));
@@ -276,9 +279,7 @@ function queueRequest(
       vouchers: [],
     };
     requestQueue.push(queuedRequest);
-    console.log(
-      `[Queue] Added ${request.type} request (queue length: ${requestQueue.length})`
-    );
+    logger.info({ type: 'queue', requestType: request.type, queueLength: requestQueue.length }, `Added ${request.type} request to queue`);
   });
 }
 
@@ -347,7 +348,7 @@ const server = http.createServer((req, res) => {
         res.end('Not found');
       }
     } catch (error) {
-      console.error('Error handling request:', error);
+      logger.error({ error: String(error), url: req.url }, 'Error handling request');
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: String(error) }));
     }
@@ -355,8 +356,28 @@ const server = http.createServer((req, res) => {
 });
 
 const PORT = parseInt(process.env.PORT || '5004', 10);
+const LOG_STREAM_PATH = '/ws/logs';
+
+// Create WebSocket server for log streaming
+const wss = new WebSocketServer({ noServer: true });
+
+// Handle WebSocket upgrade requests
+server.on('upgrade', (request, socket, head) => {
+  const { pathname } = new URL(request.url || '/', `http://${request.headers.host}`);
+
+  if (pathname === LOG_STREAM_PATH) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    wss.handleUpgrade(request, socket, head, (ws: any) => {
+      logger.info({ clientIp: request.socket.remoteAddress }, 'Log stream client connected');
+      addLogClient(ws);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
 server.listen(PORT, '0.0.0.0', () => {
+  logger.info({ port: PORT, logStreamPath: LOG_STREAM_PATH }, 'L{CORE} Rollup Server started');
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
 ║              L{CORE} Rollup Server                           ║
@@ -372,6 +393,9 @@ server.listen(PORT, '0.0.0.0', () => {
 ║    POST /input/inspect - Submit inspect query                ║
 ║    GET  /status        - Get server status                   ║
 ║    GET  /health        - Health check                        ║
+╠══════════════════════════════════════════════════════════════╣
+║  Log Stream:                                                 ║
+║    WS   /ws/logs       - Real-time log streaming             ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Listening on port ${PORT}                                       ║
 ╚══════════════════════════════════════════════════════════════╝

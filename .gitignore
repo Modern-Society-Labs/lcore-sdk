@@ -40,3 +40,4 @@ SECURITY-ACCESS-CONTROL.md
 
 # Cartesi build artifacts
 .cartesi/
+.playwright-mcp/

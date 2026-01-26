@@ -6,13 +6,14 @@ import type { WebSocket } from 'ws'
 import { WebSocketServer } from 'ws'
 
 import { handleApiRequest, handleHealthCheck } from '#src/api/routes/index.ts'
-import { API_SERVER_PORT, BROWSER_RPC_PATHNAME, WS_PATHNAME } from '#src/config/index.ts'
+import { API_SERVER_PORT, BROWSER_RPC_PATHNAME, LOG_STREAM_PATHNAME, WS_PATHNAME } from '#src/config/index.ts'
 import { initDecryption, initInputEncryption } from '#src/lcore/index.ts'
 import { AttestorServerSocket } from '#src/server/socket.ts'
 import { getAttestorAddress } from '#src/server/utils/generics.ts'
 import { addKeepAlive } from '#src/server/utils/keep-alive.ts'
 import type { BGPListener } from '#src/types/index.ts'
 import { createBgpListener } from '#src/utils/bgp-listener.ts'
+import { logStreamManager } from '#src/server/log-stream.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { sanitizeError } from '#src/utils/error-sanitizer.ts'
 import { logger as LOGGER } from '#src/utils/index.ts'
@@ -183,6 +184,7 @@ export async function createServer(port = PORT) {
 		{
 			port,
 			apiPath: WS_PATHNAME,
+			logStreamPath: LOG_STREAM_PATHNAME,
 			browserRpcPath: BROWSER_RPC_PATHNAME,
 			signerAddress: getAttestorAddress(SelectedServiceSignatureType)
 		},
@@ -228,6 +230,15 @@ function handleUpgrade(
 	if(pathname === WS_PATHNAME) {
 		this.handleUpgrade(request, socket, head, (ws) => {
 			this.emit('connection', ws, request)
+		})
+		return
+	}
+
+	// Handle log stream WebSocket connections
+	if(pathname === LOG_STREAM_PATHNAME) {
+		this.handleUpgrade(request, socket, head, (ws) => {
+			LOGGER.info({ clientIp: request.socket.remoteAddress }, 'Log stream client connected')
+			logStreamManager.addClient(ws)
 		})
 		return
 	}

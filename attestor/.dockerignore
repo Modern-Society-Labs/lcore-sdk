@@ -1,17 +1,56 @@
+# Dependencies (will be installed fresh in container)
 node_modules
+package-lock.json.bak
+
+# Build outputs (will be rebuilt)
 /lib
+/dist
+
+# Browser build artifacts
 browser/resources
+
+# Development/Example files
 example-local
-.github
-docker-compose.yaml
+examples
+
+# Git/CI
 .git
-.env*
+.github
+.gitignore
+
+# Docker files (avoid recursive copy)
+docker-compose.yaml
+Dockerfile*
+*.dockerfile
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Logs and temp files
 *.log
+*.tmp
+.DS_Store
+
+# Test coverage
 coverage
 .nyc_output
-cartesi/node_modules
-cartesi/dist
-cartesi/.cartesi
-memory-bank
+
+# Cartesi (separate project)
+cartesi/
+
+# IDE
 .vscode
 .idea
+*.swp
+*.swo
+
+# Memory bank / docs
+memory-bank
+*.md
+!README.md
+
+# Other
+.claude
+.playwright-mcp

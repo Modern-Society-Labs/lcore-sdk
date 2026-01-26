@@ -1,5 +1,6 @@
 import { type LoggerOptions, pino, stdTimeFunctions } from 'pino'
 
+import { logStreamManager } from '#src/server/log-stream.ts'
 import type { LogLevel } from '#src/types/index.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 
@@ -9,7 +10,10 @@ const envLevel = getEnvVariable('LOG_LEVEL') as LogLevel
 
 export let logger = pino()
 
-makeLogger(false, envLevel)
+makeLogger(false, envLevel, (level, log) => {
+	// Broadcast all logs to connected WebSocket clients
+	logStreamManager.broadcast(level, log)
+})
 
 /**
  * Creates a logger instance with optional redaction of PII.
