@@ -181,6 +181,98 @@ export interface HealthStatus {
   lastBlock?: number
 }
 
+// ============= Identity / KYC (zkIdentity) =============
+
+export interface KYCProviderInfo {
+  /** Provider identifier (e.g., 'smile_id') */
+  name: string
+  /** Human-readable display name */
+  displayName: string
+  /** ISO 3166-1 alpha-2 country codes supported */
+  supportedCountries: string[]
+  /** Whether running in stub/test mode */
+  stubMode: boolean
+}
+
+export interface StartVerificationParams {
+  /** User's did:key identifier */
+  userDid: string
+  /** KYC provider to use (e.g., 'smile_id') */
+  provider: string
+  /** Wallet signature authorizing verification */
+  walletSignature: string
+  /** Timestamp from signature message */
+  timestamp: number
+  /** Optional: country hint */
+  country?: string
+  /** Optional: verification level */
+  jobType?: 'basic' | 'document' | 'biometric'
+}
+
+export interface StartVerificationResult {
+  /** KYC session identifier */
+  sessionId: string
+  /** Provider name */
+  provider: string
+  /** URL for user to complete verification */
+  verificationUrl: string
+  /** Session expiry (unix timestamp) */
+  expiresAt: number
+}
+
+export interface KYCSessionStatus {
+  /** Session identifier */
+  sessionId: string
+  /** Provider name */
+  provider: string
+  /** Current status */
+  status: 'pending' | 'completed' | 'failed' | 'expired'
+  /** User's did:key */
+  user_did: string
+}
+
+export interface IdentityAttestation {
+  /** Record ID */
+  id: number
+  /** User's did:key identifier */
+  user_did: string
+  /** KYC provider (e.g., 'smile_id') */
+  provider: string
+  /** ISO 3166-1 alpha-2 country code */
+  country_code: string
+  /** Verification level achieved */
+  verification_level: 'basic' | 'document' | 'biometric'
+  /** Whether user is verified */
+  verified: boolean
+  /** When attestation was issued (unix timestamp) */
+  issued_at: number
+  /** When attestation expires (unix timestamp) */
+  expires_at: number
+  /** JWS from attestor */
+  attestor_signature: string
+  /** Session ID for idempotency */
+  session_id: string
+  /** Whether attestation was revoked */
+  revoked: boolean
+  /** Cartesi input index */
+  input_index: number
+  /** Creation timestamp */
+  created_at: string
+}
+
+export interface IdentityStats {
+  /** Total attestations (including expired/revoked) */
+  total: number
+  /** Active (valid, not expired, not revoked) */
+  active: number
+  /** Unique user DIDs */
+  unique_users: number
+  /** Counts by provider */
+  by_provider: Record<string, number>
+  /** Counts by country */
+  by_country: Record<string, number>
+}
+
 // ============= Errors =============
 
 export class LCoreError extends Error {

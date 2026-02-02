@@ -64,6 +64,15 @@ export {
   handleInspectDeviceStats,
 } from './lcore-device';
 
+// ============= Identity Attestation Handlers (zkIdentity) =============
+export {
+  handleIdentityAttestation,
+  handleInspectIdentity,
+  handleInspectIdentityHistory,
+  handleInspectIdentityByCountry,
+  handleInspectIdentityStats,
+} from './lcore-identity';
+
 // ============= Route Configuration =============
 
 import { RouteConfig } from '../router';
@@ -122,6 +131,14 @@ import {
   handleInspectDeviceStats,
 } from './lcore-device';
 
+import {
+  handleIdentityAttestation,
+  handleInspectIdentity,
+  handleInspectIdentityHistory,
+  handleInspectIdentityByCountry,
+  handleInspectIdentityStats,
+} from './lcore-identity';
+
 /**
  * L{CORE} SDK Route Configuration
  *
@@ -150,6 +167,9 @@ export const lcoreRouteConfig: RouteConfig = {
 
     // Device attestation (from IoT devices via did:key)
     device_attestation: handleDeviceAttestation,
+
+    // Identity attestation (zkIdentity - privacy-preserving KYC)
+    identity_attestation: handleIdentityAttestation,
   },
   inspect: {
     // Attestation queries
@@ -191,6 +211,12 @@ export const lcoreRouteConfig: RouteConfig = {
     device_attestations: handleInspectDeviceAttestations,
     device_latest: handleInspectDeviceLatest,
     device_stats: handleInspectDeviceStats,
+
+    // Identity attestation queries (zkIdentity)
+    identity: handleInspectIdentity,
+    identity_history: handleInspectIdentityHistory,
+    identity_by_country: handleInspectIdentityByCountry,
+    identity_stats: handleInspectIdentityStats,
   },
 };
 

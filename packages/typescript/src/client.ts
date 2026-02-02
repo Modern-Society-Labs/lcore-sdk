@@ -12,10 +12,14 @@ import type {
   QueryResult,
   HealthStatus,
   ProviderSchema,
+  StartVerificationParams,
+  StartVerificationResult,
+  IdentityAttestation,
 } from './types.js'
 import { LCoreError } from './types.js'
 import { AttestorClient } from './attestor.js'
 import { CartesiClient } from './cartesi.js'
+import { IdentityClient } from './identity.js'
 import { validateConfig } from './utils.js'
 
 /**
@@ -47,6 +51,7 @@ import { validateConfig } from './utils.js'
 export class LCore {
   private attestor: AttestorClient
   private cartesi: CartesiClient
+  private identity: IdentityClient
   private config: LCoreConfig
 
   constructor(config: LCoreConfig) {
@@ -68,6 +73,11 @@ export class LCore {
     this.cartesi = new CartesiClient({
       baseUrl: config.cartesiUrl,
       dappAddress: config.dappAddress,
+      timeout: config.timeout,
+    })
+    this.identity = new IdentityClient({
+      attestorBaseUrl: config.attestorUrl,
+      cartesiBaseUrl: config.cartesiUrl,
       timeout: config.timeout,
     })
   }
@@ -140,6 +150,35 @@ export class LCore {
    */
   get cartesiClient(): CartesiClient {
     return this.cartesi
+  }
+
+  /**
+   * Get the Identity client for advanced KYC/identity operations
+   */
+  get identityClient(): IdentityClient {
+    return this.identity
+  }
+
+  // ============= Identity / KYC Convenience Methods =============
+
+  /**
+   * Start a KYC verification session
+   *
+   * @param params - Verification parameters (userDid, provider, walletSignature, timestamp)
+   * @returns Session ID and verification URL
+   */
+  async startKYC(params: StartVerificationParams): Promise<StartVerificationResult> {
+    return this.identity.startVerification(params)
+  }
+
+  /**
+   * Get the latest valid identity attestation for a user
+   *
+   * @param userDid - User's did:key identifier
+   * @returns Latest valid attestation or null
+   */
+  async getIdentity(userDid: string): Promise<IdentityAttestation | null> {
+    return this.identity.getIdentity(userDid)
   }
 
   /**

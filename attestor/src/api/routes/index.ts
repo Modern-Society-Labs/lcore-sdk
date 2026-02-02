@@ -10,6 +10,7 @@ import { handleApiKeysRoute } from '#src/api/routes/api-keys.ts'
 import { handleAuditRoute } from '#src/api/routes/audit.ts'
 import { handleAuthRoute } from '#src/api/routes/auth.ts'
 import { handleDeviceRoute } from '#src/api/routes/device.ts'
+import { handleKycRoute } from '#src/api/routes/kyc.ts'
 import { handleLCoreRoute } from '#src/api/routes/lcore.ts'
 import { handleOperatorsRoute } from '#src/api/routes/operators.ts'
 import { handleStatsRoute } from '#src/api/routes/stats.ts'
@@ -68,6 +69,10 @@ export async function handleApiRequest(
 
 		if(path.startsWith('/api/lcore')) {
 			return await handleLCoreRoute(req, res, path)
+		}
+
+		if(path.startsWith('/api/kyc')) {
+			return await handleKycRoute(req, res, path)
 		}
 
 		if(path.startsWith('/api/device')) {

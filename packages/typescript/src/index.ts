@@ -12,6 +12,7 @@ export { LCore, createLCoreFromEnv } from './client.js'
 // Sub-clients
 export { AttestorClient } from './attestor.js'
 export { CartesiClient } from './cartesi.js'
+export { IdentityClient } from './identity.js'
 
 // Types
 export type {
@@ -32,6 +33,12 @@ export type {
   AccessPermission,
   HealthStatus,
   LCoreErrorCode,
+  KYCProviderInfo,
+  StartVerificationParams,
+  StartVerificationResult,
+  KYCSessionStatus,
+  IdentityAttestation,
+  IdentityStats,
 } from './types.js'
 
 export { LCoreError } from './types.js'

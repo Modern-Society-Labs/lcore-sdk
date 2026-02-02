@@ -276,6 +276,33 @@ export function initLCoreSchema(): void {
 
     CREATE INDEX IF NOT EXISTS idx_device_attestations_did ON device_attestations(device_did);
     CREATE INDEX IF NOT EXISTS idx_device_attestations_timestamp ON device_attestations(timestamp DESC);
+
+    -- ============= IDENTITY ATTESTATIONS (zkIdentity) =============
+
+    -- Privacy-preserving KYC verification attestations
+    -- Contains ONLY non-PII metadata — no personal data
+    CREATE TABLE IF NOT EXISTS identity_attestations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_did TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      country_code TEXT NOT NULL,
+      verification_level TEXT NOT NULL,
+      verified BOOLEAN NOT NULL,
+      issued_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      attestor_signature TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      revoked BOOLEAN DEFAULT FALSE,
+      revoked_reason TEXT,
+      input_index INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(user_did, provider, session_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_identity_user_did ON identity_attestations(user_did);
+    CREATE INDEX IF NOT EXISTS idx_identity_provider ON identity_attestations(provider);
+    CREATE INDEX IF NOT EXISTS idx_identity_country ON identity_attestations(country_code);
+    CREATE INDEX IF NOT EXISTS idx_identity_expiry ON identity_attestations(expires_at);
   `);
 
   // Initialize encryption schema (separate table)

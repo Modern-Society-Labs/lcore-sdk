@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>zkIdentity MVP — User Journey</title>
+  <style>
+:root {
+  --bg-primary: #ffffff;
+  --bg-page: #f5f5f7;
+  --bg-grouped: #f2f2f7;
+  --bg-secondary: #e5e5ea;
+  --bg-tertiary: #d1d1d6;
+  --fill-primary: rgba(60, 60, 67, 0.18);
+  --fill-secondary: rgba(60, 60, 67, 0.12);
+  --fill-tertiary: rgba(60, 60, 67, 0.08);
+  --text-primary: #1c1c1e;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #aeaeb2;
+  --blue: #007aff;
+  --green: #34c759;
+  --orange: #ff9500;
+  --red: #ff3b30;
+  --purple: #af52de;
+  --cyan: #32ade6;
+  --separator: rgba(60, 60, 67, 0.12);
+  --phone-width: 375px;
+  --phone-height: 812px;
+  --ha-gold: #b8860b;
+  --ha-green: #2d8c4e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Inline SVG icon system */
+.icon-svg { width: 18px; height: 18px; flex-shrink: 0; }
+.icon-svg-sm { width: 14px; height: 14px; flex-shrink: 0; }
+.icon-svg-lg { width: 24px; height: 24px; flex-shrink: 0; }
+.icon-svg-xl { width: 36px; height: 36px; flex-shrink: 0; }
+
+.page { padding: 48px 32px; max-width: 1800px; margin: 0 auto; }
+
+.page-header { text-align: center; margin-bottom: 40px; }
+.page-header h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.025em; color: var(--text-primary); margin-bottom: 6px; }
+.page-header .subtitle { font-size: 17px; color: var(--ha-gold); font-weight: 500; margin-bottom: 10px; }
+.page-header p { font-size: 16px; color: var(--text-secondary); max-width: 640px; margin: 0 auto; line-height: 1.55; }
+
+/* Mission banner */
+.mission-banner {
+  max-width: 900px; margin: 0 auto 56px; padding: 28px 32px;
+  background: var(--bg-primary); border: 1px solid var(--separator); border-radius: 16px;
+  display: flex; gap: 32px;
+}
+.mission-banner .mission-left, .mission-banner .mission-right { flex: 1; }
+.mission-banner h3 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; letter-spacing: -0.01em; }
+.mission-banner p { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+.mission-banner .tags { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+.tag {
+  display: inline-block; padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 500;
+  background: var(--fill-tertiary); color: var(--text-secondary);
+}
+
+/* Journey */
+.journey-row { display: flex; align-items: flex-start; justify-content: center; gap: 24px; margin-bottom: 64px; flex-wrap: wrap; }
+.journey-step { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.step-header { display: flex; align-items: center; gap: 8px; }
+.step-number {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--text-primary);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #fff;
+}
+.step-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+.flow-arrow { display: flex; align-items: center; padding-top: 180px; color: var(--text-tertiary); }
+.flow-arrow svg { width: 24px; height: 24px; }
+
+/* Phone - light frame */
+.phone-frame {
+  width: var(--phone-width); height: var(--phone-height); background: #1c1c1e; border-radius: 47px;
+  padding: 11px; position: relative;
+  box-shadow: 0 25px 60px -15px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+}
+.phone-screen { width: 100%; height: 100%; background: var(--bg-primary); border-radius: 39px; overflow: hidden; position: relative; }
+.dynamic-island { position: absolute; top: 11px; left: 50%; transform: translateX(-50%); width: 126px; height: 37px; background: #1c1c1e; border-radius: 20px; z-index: 100; }
+.screen-layout { height: 100%; display: flex; flex-direction: column; }
+.status-bar { height: 54px; padding: 14px 24px 0; display: flex; justify-content: space-between; align-items: flex-start; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.status-bar-left { width: 54px; }
+.status-bar-right { display: flex; gap: 4px; align-items: center; color: var(--text-primary); }
+
+/* Nav */
+.nav-inline { height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5px solid var(--separator); position: relative; }
+.nav-inline-left { display: flex; align-items: center; gap: 4px; color: var(--blue); font-size: 17px; }
+.nav-inline-left svg { width: 20px; height: 20px; }
+.nav-inline-title { font-size: 17px; font-weight: 600; color: var(--text-primary); position: absolute; left: 50%; transform: translateX(-50%); }
+.nav-inline-right { color: var(--blue); font-size: 17px; }
+
+.scroll-content { flex: 1; overflow-y: auto; padding-bottom: 34px; }
+
+/* In-phone hero */
+.phone-hero { padding: 20px 16px 12px; text-align: center; }
+.phone-hero h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 4px; color: var(--text-primary); }
+.phone-hero .hero-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 4px; }
+.phone-hero .hero-tag { font-size: 12px; color: var(--ha-gold); font-weight: 500; }
+
+/* Callout box */
+.callout {
+  margin: 8px 16px; padding: 14px 16px; border-radius: 12px;
+  background: var(--bg-grouped); border: 1px solid var(--separator);
+}
+.callout h4 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.callout p { font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
+.callout.accent { background: #f0f7ff; border-color: rgba(0,122,255,0.15); }
+.callout.accent h4 { color: var(--blue); }
+.callout.green-c { background: #f0faf4; border-color: rgba(52,199,89,0.2); }
+.callout.green-c h4 { color: var(--ha-green); }
+
+/* Action grid */
+.action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; }
+.action-card {
+  background: var(--bg-grouped); border-radius: 12px; padding: 14px; border: 1px solid var(--separator);
+}
+.action-card.highlighted { background: #f0f7ff; border-color: rgba(0,122,255,0.2); }
+.action-card .card-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.action-card .card-icon.blue-bg { background: rgba(0,122,255,0.1); color: var(--blue); }
+.action-card .card-icon.purple-bg { background: rgba(175,82,222,0.1); color: var(--purple); }
+.action-card h3 { font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.action-card p { font-size: 12px; color: var(--text-secondary); }
+
+/* List group */
+.list-group { background: var(--bg-grouped); border-radius: 12px; overflow: hidden; margin: 0 16px; }
+.list-row { display: flex; align-items: center; padding: 11px 14px; gap: 10px; }
+.list-row:not(:last-child) { border-bottom: 0.5px solid var(--separator); }
+.list-row .row-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.list-row .row-icon.green-bg { background: var(--green); color: #fff; }
+.list-row .row-icon.blue-bg { background: var(--blue); color: #fff; }
+.list-row .row-icon.gold-bg { background: var(--ha-gold); color: #fff; }
+.list-row .row-icon.orange-bg { background: var(--orange); color: #fff; }
+.list-row .row-text { flex: 1; font-size: 15px; color: var(--text-primary); }
+.list-row .row-value { font-size: 13px; color: var(--text-secondary); flex-shrink: 0; }
+
+/* CTA button */
+.cta-btn {
+  display: block; margin: 10px 16px; padding: 14px; border-radius: 12px; text-align: center;
+  font-size: 16px; font-weight: 600; text-decoration: none; border: none; cursor: pointer;
+}
+.cta-btn.primary { background: var(--blue); color: #fff; }
+.cta-btn.dark { background: var(--text-primary); color: #fff; }
+.cta-btn.outline { background: none; border: 1px solid var(--separator); color: var(--text-primary); }
+.cta-btn.green-btn { background: var(--ha-green); color: #fff; }
+
+/* Wallet bar */
+.wallet-bar { margin: 0 16px 10px; padding: 10px 14px; background: var(--bg-grouped); border-radius: 10px; display: flex; align-items: center; gap: 8px; }
+.wallet-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.wallet-addr { font-size: 13px; font-family: 'SF Mono', 'Menlo', monospace; color: var(--text-secondary); flex: 1; }
+.wallet-label { font-size: 11px; color: var(--green); font-weight: 600; }
+
+/* Auth message */
+.auth-msg {
+  margin: 0 16px 10px; padding: 14px; background: var(--bg-grouped); border-radius: 10px;
+  font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; color: var(--text-secondary); line-height: 1.6;
+}
+.auth-msg .hl { color: var(--blue); }
+
+/* Provider card */
+.provider-card {
+  margin: 0 16px 8px; padding: 12px 14px; background: var(--bg-grouped); border-radius: 12px;
+  display: flex; align-items: center; gap: 12px; border: 1.5px solid transparent;
+}
+.provider-card.selected { border-color: var(--blue); background: #f0f7ff; }
+.provider-icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+.provider-info { flex: 1; }
+.provider-info .provider-name { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.provider-info .provider-desc { font-size: 12px; color: var(--text-secondary); }
+.provider-countries { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.radio-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--text-tertiary); flex-shrink: 0; }
+.radio-dot.checked { border-color: var(--blue); background: var(--blue); display: flex; align-items: center; justify-content: center; }
+
+/* Spinner */
+.spinner-area { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 32px 16px; }
+.spinner-ring {
+  width: 48px; height: 48px; border-radius: 50%; border: 3px solid var(--fill-secondary);
+  border-top-color: var(--blue); animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-text { font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.spinner-sub { font-size: 13px; color: var(--text-secondary); text-align: center; max-width: 280px; }
+
+/* Progress steps */
+.progress-steps { margin: 0 16px; }
+.progress-step { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+.progress-step:not(:last-child) { border-bottom: 0.5px solid var(--separator); }
+.progress-dot {
+  width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; flex-shrink: 0;
+}
+.progress-dot.done { background: var(--green); color: #fff; }
+.progress-dot.active { background: var(--blue); color: #fff; }
+.progress-dot.pending { background: var(--fill-secondary); color: var(--text-tertiary); }
+.progress-label { flex: 1; font-size: 14px; color: var(--text-primary); }
+.progress-label.dimmed { color: var(--text-tertiary); }
+.progress-status { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+
+/* Proof section */
+.proof-section { margin: 0 16px 8px; }
+.proof-section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; padding-left: 2px; }
+.proof-section-title.green-t { color: var(--green); }
+.proof-section-title.red-t { color: var(--red); }
+.proof-row { display: flex; align-items: center; padding: 7px 12px; background: var(--bg-grouped); border-radius: 8px; margin-bottom: 3px; gap: 8px; }
+.proof-row .proof-key { font-size: 13px; color: var(--text-secondary); flex: 1; }
+.proof-row .proof-val { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.proof-row.excluded { opacity: 0.35; }
+.proof-row.excluded .proof-val { text-decoration: line-through; color: var(--red); }
+
+/* Stat row */
+.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 16px 10px; }
+.stat-card { background: var(--bg-grouped); border-radius: 10px; padding: 12px; text-align: center; }
+.stat-num { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+.stat-label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* Section label inside phone */
+.section-label { padding: 0 16px 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* Tab bar */
+.tab-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 83px;
+  background: rgba(249,249,249,0.94); backdrop-filter: blur(20px);
+  border-top: 0.5px solid var(--separator); padding: 0 16px; padding-bottom: 34px;
+  display: flex; justify-content: space-around; align-items: flex-start; padding-top: 6px;
+}
+.tab-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 12px; }
+.tab-item svg { color: var(--text-tertiary); }
+.tab-item.active svg { color: var(--blue); }
+.tab-label { font-size: 10px; color: var(--text-tertiary); }
+.tab-item.active .tab-label { color: var(--blue); }
+
+/* Annotations */
+.annotation {
+  position: absolute; background: var(--text-primary); color: #fff; padding: 6px 12px;
+  border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; z-index: 200;
+}
+.annotation::before { content: ''; position: absolute; width: 0; height: 0; }
+.annotation.right::before { left: -6px; top: 50%; transform: translateY(-50%); border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-right: 6px solid var(--text-primary); }
+.annotation.bottom::before { top: -6px; left: 50%; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 6px solid var(--text-primary); }
+
+/* Section divider */
+.section-divider { height: 56px; display: flex; align-items: center; justify-content: center; margin: 16px 0; }
+.section-divider-line { flex: 1; height: 1px; background: var(--separator); }
+.section-divider-text { padding: 0 20px; font-size: 13px; color: var(--text-tertiary); font-weight: 500; }
+
+/* Insight box */
+.insight-box { max-width: 1000px; margin: 0 auto; padding: 36px; background: var(--bg-primary); border-radius: 16px; border: 1px solid var(--separator); }
+.insight-box h3 { font-size: 20px; font-weight: 700; margin-bottom: 24px; text-align: center; color: var(--text-primary); }
+.insight-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.insight-item { text-align: center; }
+.insight-item .insight-icon { width: 40px; height: 40px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.insight-item .insight-icon.blue-bg { background: rgba(0,122,255,0.08); color: var(--blue); }
+.insight-item .insight-icon.red-bg { background: rgba(255,59,48,0.08); color: var(--red); }
+.insight-item .insight-icon.green-bg { background: rgba(52,199,89,0.08); color: var(--green); }
+.insight-item .insight-icon.purple-bg { background: rgba(175,82,222,0.08); color: var(--purple); }
+.insight-item .insight-icon.orange-bg { background: rgba(255,149,0,0.08); color: var(--orange); }
+.insight-item .insight-icon.cyan-bg { background: rgba(50,173,230,0.08); color: var(--cyan); }
+.insight-item h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text-primary); }
+.insight-item p { font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header class="page-header">
+      <h1>zkIdentity</h1>
+      <div class="subtitle">Hadinet Africa &#x2014; "Unity"</div>
+      <p>Verify your identity once. Use it anywhere across the continent. Your personal data stays private — always.</p>
+    </header>
+
+    <div class="mission-banner">
+      <div class="mission-left">
+        <h3>The Problem</h3>
+        <p>Africa lacks a cohesive ID system within states, let alone across borders. Millions live undocumented. Past "decentralized" ID solutions created invasive centralized tools requiring biometric data to receive aid.</p>
+        <div class="tags">
+          <span class="tag">Agenda 2063</span>
+          <span class="tag">African Passport</span>
+          <span class="tag">Self-Sovereign ID</span>
+        </div>
+      </div>
+      <div class="mission-right">
+        <h3>The MVP Solution</h3>
+        <p>Verify your identity with a trusted provider. Get a digital proof that confirms who you are — without sharing your personal details. Free to use. No hidden costs.</p>
+        <div class="tags">
+          <span class="tag">Privacy-First</span>
+          <span class="tag">You Own Your Data</span>
+          <span class="tag">No Lock-In</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW 1 -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Primary User Journey</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+    <div class="journey-row">
+
+      <!-- 1: Landing -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">1</div>
+          <span class="step-title">Landing</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:41</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="scroll-content">
+                <div class="phone-hero">
+                  <div style="width: 48px; height: 48px; border-radius: 12px; background: var(--fill-tertiary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  </div>
+                  <h2>zkIdentity</h2>
+                  <div class="hero-sub">Verify once, use anywhere across the continent</div>
+                  <div class="hero-tag">Hadinet Africa</div>
+                </div>
+
+                <div class="callout" style="margin-top: 4px;">
+                  <h4>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ha-gold)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Your Data, Your Control
+                  </h4>
+                  <p>Your personal information is never saved or shared. Only a simple "yes, verified" is stored — nothing else.</p>
+                </div>
+
+                <div class="action-grid" style="margin-top: 10px;">
+                  <div class="action-card highlighted">
+                    <div class="card-icon blue-bg">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 16h4"/></svg>
+                    </div>
+                    <h3>Verify KYC</h3>
+                    <p>Start verification</p>
+                  </div>
+                  <div class="action-card">
+                    <div class="card-icon purple-bg">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <h3>My Identity</h3>
+                    <p>View your ID</p>
+                  </div>
+                </div>
+
+                <div class="list-group" style="margin-top: 14px;">
+                  <div class="list-row">
+                    <div class="row-icon green-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <span class="row-text">No protocol fees</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon blue-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <span class="row-text">Private by design</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon gold-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+                    </div>
+                    <span class="row-text">12 African countries</span>
+                  </div>
+                </div>
+
+                <a class="cta-btn dark" style="margin-top: 14px;">Connect Wallet</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 2: Select Provider -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">2</div>
+          <span class="step-title">Select Provider</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:41</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Home</span></div>
+                <span class="nav-inline-title">Verify</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div style="padding: 14px 16px 6px;">
+                  <div style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 3px;">Choose Provider</div>
+                  <div style="font-size: 13px; color: var(--text-secondary);">Select a verification provider for your region</div>
+                </div>
+
+                <div class="wallet-bar" style="margin-top: 10px;">
+                  <div class="wallet-dot"></div>
+                  <span class="wallet-addr">0x7a3b...f291</span>
+                  <span class="wallet-label">Connected</span>
+                </div>
+
+                <div class="provider-card selected">
+                  <div class="provider-icon-box" style="background: #e8f5e9;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ha-green)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>
+                  </div>
+                  <div class="provider-info">
+                    <div class="provider-name">Smile ID</div>
+                    <div class="provider-desc">Africa-focused identity verification</div>
+                    <div class="provider-countries">ET, NG, KE, GH, ZA, UG, TZ, RW +4</div>
+                  </div>
+                  <div class="radio-dot checked"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                </div>
+
+                <div class="provider-card">
+                  <div class="provider-icon-box" style="background: #e3f2fd;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0066FF" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+                  </div>
+                  <div class="provider-info">
+                    <div class="provider-name">Plaid</div>
+                    <div class="provider-desc">US, Canada &amp; Europe</div>
+                    <div class="provider-countries">US, CA, GB, FR, DE, AU +3</div>
+                  </div>
+                  <div class="radio-dot"></div>
+                </div>
+
+                <div class="provider-card" style="opacity: 0.45;">
+                  <div class="provider-icon-box" style="background: #ede7f6;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  </div>
+                  <div class="provider-info">
+                    <div class="provider-name">Vove ID</div>
+                    <div class="provider-desc">Eritrea + MENA coverage</div>
+                    <div class="provider-countries">ER, ET, MA, EG, DZ</div>
+                  </div>
+                  <span style="font-size: 10px; color: var(--text-tertiary); font-weight: 600; letter-spacing: 0.03em;">SOON</span>
+                </div>
+
+                <div class="callout accent" style="margin-top: 6px;">
+                  <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Your data is never stored
+                  </h4>
+                  <p>Your personal details are checked then immediately deleted. We only keep a simple confirmation that you're verified.</p>
+                </div>
+
+                <a class="cta-btn primary">Continue with Smile ID</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 3: Authorize -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">3</div>
+          <span class="step-title">Authorize</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:41</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span></div>
+                <span class="nav-inline-title">Authorize</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div class="phone-hero" style="padding-top: 14px;">
+                  <div style="width: 48px; height: 48px; border-radius: 12px; background: var(--fill-tertiary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="1.5"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+                  </div>
+                  <h2 style="font-size: 20px;">Confirm Your Identity</h2>
+                  <div class="hero-sub">Approve with your wallet to start verification</div>
+                </div>
+
+                <div class="wallet-bar">
+                  <div class="wallet-dot"></div>
+                  <span class="wallet-addr">0x7a3b...f291</span>
+                  <span class="wallet-label">Connected</span>
+                </div>
+
+                <div class="section-label">Message to Sign</div>
+                <div class="auth-msg">I authorize zkIdentity verification for <span class="hl">0x7a3b...f291</span> at <span class="hl">2026-01-31T12:00:00Z</span></div>
+
+                <a class="cta-btn primary">Approve &amp; Start Verification</a>
+                <a class="cta-btn outline">Cancel</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW 2 -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Verification &amp; Proof</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+    <div class="journey-row">
+
+      <!-- 4: Verifying -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">4</div>
+          <span class="step-title">Verifying</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:42</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span></div>
+                <span class="nav-inline-title">Session</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div class="spinner-area">
+                  <div class="spinner-ring"></div>
+                  <div class="spinner-text">Verifying Identity</div>
+                  <div class="spinner-sub">Your KYC is being processed by Smile ID. This page updates automatically.</div>
+                </div>
+
+                <div class="progress-steps" style="margin-top: 4px;">
+                  <div class="progress-step">
+                    <div class="progress-dot done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <span class="progress-label">Wallet connected</span>
+                    <span class="progress-status">Done</span>
+                  </div>
+                  <div class="progress-step">
+                    <div class="progress-dot done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <span class="progress-label">Identity created</span>
+                    <span class="progress-status">Done</span>
+                  </div>
+                  <div class="progress-step">
+                    <div class="progress-dot done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <span class="progress-label">Session created</span>
+                    <span class="progress-status">Done</span>
+                  </div>
+                  <div class="progress-step">
+                    <div class="progress-dot active">4</div>
+                    <span class="progress-label">Identity check</span>
+                    <span class="progress-status" style="color: var(--orange);">In progress</span>
+                  </div>
+                  <div class="progress-step">
+                    <div class="progress-dot pending">5</div>
+                    <span class="progress-label dimmed">Saving your proof</span>
+                    <span class="progress-status">Pending</span>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 5: Proof Result -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">5</div>
+          <span class="step-title">Proof Result</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:43</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Back</span></div>
+                <span class="nav-inline-title">Verified</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div class="phone-hero" style="padding-top: 10px; padding-bottom: 6px;">
+                  <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--green); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <h2 style="font-size: 20px; color: var(--green);">Identity Verified</h2>
+                  <div class="hero-sub">Your verified status has been saved securely</div>
+                </div>
+
+                <div class="proof-section">
+                  <div class="proof-section-title green-t">What We Save</div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+                    <span class="proof-key">Provider</span>
+                    <span class="proof-val">Smile ID</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+                    <span class="proof-key">Country</span>
+                    <span class="proof-val">ET (Ethiopia)</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <span class="proof-key">Level</span>
+                    <span class="proof-val">Basic</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span class="proof-key">Verified</span>
+                    <span class="proof-val" style="color: var(--green);">true</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    <span class="proof-key">Expires</span>
+                    <span class="proof-val">Jan 2027</span>
+                  </div>
+                </div>
+
+                <div class="proof-section" style="margin-top: 6px;">
+                  <div class="proof-section-title red-t">What We Never Save</div>
+                  <div class="proof-row excluded">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span class="proof-key">Full name</span>
+                    <span class="proof-val">never stored</span>
+                  </div>
+                  <div class="proof-row excluded">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    <span class="proof-key">Date of birth</span>
+                    <span class="proof-val">never stored</span>
+                  </div>
+                  <div class="proof-row excluded">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    <span class="proof-key">ID images</span>
+                    <span class="proof-val">never stored</span>
+                  </div>
+                  <div class="proof-row excluded">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zM8 12a2 2 0 1 1 4 0 2 2 0 0 1-4 0z"/></svg>
+                    <span class="proof-key">Biometrics</span>
+                    <span class="proof-val">never stored</span>
+                  </div>
+                </div>
+
+                <a class="cta-btn green-btn" style="margin-top: 6px;">View My Identity</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 6: My Identity -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">6</div>
+          <span class="step-title">My Identity</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:44</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Home</span></div>
+                <span class="nav-inline-title">Identity</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div style="padding: 16px; text-align: center;">
+                  <div style="width: 56px; height: 56px; border-radius: 50%; background: var(--fill-tertiary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 8px;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px;">Your Digital Identity</div>
+                  <div style="display: inline-block; padding: 3px 10px; background: rgba(52,199,89,0.1); border-radius: 10px; font-size: 11px; font-weight: 600; color: var(--green);">VERIFIED</div>
+                </div>
+
+                <div class="stat-row">
+                  <div class="stat-card">
+                    <div class="stat-num" style="color: var(--green);">1</div>
+                    <div class="stat-label">Verifications</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-num">ET</div>
+                    <div class="stat-label">Country</div>
+                  </div>
+                </div>
+
+                <div class="section-label">Current Verification</div>
+                <div class="list-group" style="margin-bottom: 10px;">
+                  <div class="list-row">
+                    <div class="row-icon green-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 14px;">Smile ID</span>
+                    <span class="row-value">Basic</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon gold-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 14px;">Ethiopia (ET)</span>
+                    <span class="row-value">Active</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon blue-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 14px;">Issued</span>
+                    <span class="row-value">Jan 31, 2026</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon orange-bg">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 14px;">Expires</span>
+                    <span class="row-value">Jan 31, 2027</span>
+                  </div>
+                </div>
+
+
+                <a class="cta-btn outline" style="margin-top: 2px;">Add Another Provider</a>
+              </div>
+
+              <div class="tab-bar">
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  <span class="tab-label">Home</span>
+                </div>
+                <div class="tab-item active">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span class="tab-label">Identity</span>
+                </div>
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  <span class="tab-label">Settings</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW 3 -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Home Dashboard</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+    <div class="journey-row" style="justify-content: center;">
+
+      <!-- 7: Home -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">7</div>
+          <span class="step-title">Home</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:41</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="scroll-content">
+
+                <!-- Greeting + Avatar -->
+                <div style="padding: 16px 16px 0; display: flex; align-items: center; justify-content: space-between;">
+                  <div>
+                    <div style="font-size: 13px; color: var(--text-tertiary);">Good morning</div>
+                    <div style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-top: 1px;">0x7a3b...f291</div>
+                  </div>
+                  <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--ha-green), var(--ha-gold)); display: flex; align-items: center; justify-content: center;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                </div>
+
+                <!-- Identity Card -->
+                <div style="margin: 14px 16px 0; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); border-radius: 16px; padding: 18px; position: relative; overflow: hidden;">
+                  <div style="position: absolute; top: -20px; right: -20px; width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.04);"></div>
+                  <div style="position: absolute; bottom: -30px; left: -10px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.03);"></div>
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                      <span style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.9); letter-spacing: 0.02em;">zkIdentity</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px; padding: 3px 8px; background: rgba(52,199,89,0.2); border-radius: 8px;">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                      <span style="font-size: 10px; font-weight: 600; color: #34C759; letter-spacing: 0.03em;">VERIFIED</span>
+                    </div>
+                  </div>
+                  <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 2px;">IDENTITY</div>
+                  <div style="font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.5px; margin-bottom: 12px;">0x7a3b...f291</div>
+                  <div style="display: flex; gap: 16px;">
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">PROVIDER</div>
+                      <div style="font-size: 12px; color: rgba(255,255,255,0.85); font-weight: 500; margin-top: 1px;">Smile ID</div>
+                    </div>
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">COUNTRY</div>
+                      <div style="font-size: 12px; color: rgba(255,255,255,0.85); font-weight: 500; margin-top: 1px;">Ethiopia</div>
+                    </div>
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">EXPIRES</div>
+                      <div style="font-size: 12px; color: rgba(255,255,255,0.85); font-weight: 500; margin-top: 1px;">Jan 2027</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Verification Status -->
+                <div style="margin: 14px 16px 0; background: var(--fill-secondary); border-radius: 12px; padding: 14px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <div style="width: 28px; height: 28px; border-radius: 50%; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      </div>
+                      <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Verification Status</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--green);"></div>
+                      <span style="font-size: 11px; color: var(--green); font-weight: 500;">Active</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <div style="font-size: 11px; color: var(--text-tertiary);">Verification level</div>
+                      <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-top: 1px;">Basic KYC</div>
+                    </div>
+                    <div style="text-align: right;">
+                      <div style="font-size: 11px; color: var(--text-tertiary);">Valid until</div>
+                      <div style="font-size: 13px; font-weight: 500; color: var(--text-primary); margin-top: 1px;">Jan 2027</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div style="margin: 14px 16px 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.04em; margin-bottom: 8px;">QUICK ACTIONS</div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px;">
+                    <div style="background: var(--fill-secondary); border-radius: 12px; padding: 12px 6px; text-align: center;">
+                      <div style="width: 32px; height: 32px; border-radius: 10px; background: rgba(0,122,255,0.1); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      </div>
+                      <div style="font-size: 10px; font-weight: 600; color: var(--text-primary);">Verify</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border-radius: 12px; padding: 12px 6px; text-align: center;">
+                      <div style="width: 32px; height: 32px; border-radius: 10px; background: rgba(175,82,222,0.1); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                      </div>
+                      <div style="font-size: 10px; font-weight: 600; color: var(--text-primary);">Docs</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border-radius: 12px; padding: 12px 6px; text-align: center;">
+                      <div style="width: 32px; height: 32px; border-radius: 10px; background: rgba(88,86,214,0.1); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5856D6" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                      </div>
+                      <div style="font-size: 10px; font-weight: 600; color: var(--text-primary);">Share</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border-radius: 12px; padding: 12px 6px; text-align: center;">
+                      <div style="width: 32px; height: 32px; border-radius: 10px; background: rgba(255,149,0,0.1); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      </div>
+                      <div style="font-size: 10px; font-weight: 600; color: var(--text-primary);">History</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Activity -->
+                <div style="margin: 14px 16px 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.04em; margin-bottom: 8px;">RECENT ACTIVITY</div>
+                  <div class="list-group">
+                    <div class="list-row">
+                      <div class="row-icon green-bg">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 13px; display: block;">Identity Verified</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Smile ID &middot; Ethiopia</span>
+                      </div>
+                      <span class="row-value" style="font-size: 11px;">Today</span>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-icon blue-bg">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 13px; display: block;">Identity Created</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">zkIdentity</span>
+                      </div>
+                      <span class="row-value" style="font-size: 11px;">Today</span>
+                    </div>
+                    <div class="list-row">
+                      <div class="row-icon gold-bg">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 13px; display: block;">Country Verified</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Ethiopia (ET)</span>
+                      </div>
+                      <span class="row-value" style="font-size: 11px;">Today</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="tab-bar">
+                <div class="tab-item active">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  <span class="tab-label">Home</span>
+                </div>
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span class="tab-label">Identity</span>
+                </div>
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  <span class="tab-label">Settings</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FLOW 4: Document Vault -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Document Vault</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+    <div class="journey-row">
+
+      <!-- 8: Document Vault -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">8</div>
+          <span class="step-title">Document Vault</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:45</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Home</span></div>
+                <span class="nav-inline-title">Documents</span>
+                <span class="nav-inline-right" style="color: var(--blue); font-size: 15px;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </span>
+              </div>
+              <div class="scroll-content">
+
+                <!-- Vault Status Banner -->
+                <div style="margin: 12px 16px 0; padding: 14px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); border-radius: 14px; position: relative; overflow: hidden;">
+                  <div style="position: absolute; top: -15px; right: -15px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.04);"></div>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    </div>
+                    <div>
+                      <div style="font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.9);">Encrypted Vault</div>
+                      <div style="font-size: 11px; color: rgba(255,255,255,0.45);">Only you can access these documents</div>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 16px;">
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">DOCUMENTS</div>
+                      <div style="font-size: 16px; font-weight: 700; color: #fff; margin-top: 1px;">4</div>
+                    </div>
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">STORAGE</div>
+                      <div style="font-size: 16px; font-weight: 700; color: #fff; margin-top: 1px;">IPFS</div>
+                    </div>
+                    <div>
+                      <div style="font-size: 10px; color: rgba(255,255,255,0.4);">ENCRYPTION</div>
+                      <div style="font-size: 16px; font-weight: 700; color: #fff; margin-top: 1px;">AES-256</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Document List -->
+                <div style="margin: 14px 16px 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.04em; margin-bottom: 8px;">YOUR DOCUMENTS</div>
+                  <div class="list-group">
+                    <div class="list-row" style="padding: 13px 14px;">
+                      <div class="row-icon" style="background: rgba(0,122,255,0.1); color: var(--blue); width: 36px; height: 36px; border-radius: 10px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 16h4"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 14px; font-weight: 600; display: block;">National ID</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Uploaded Jan 31 &middot; 2.4 MB</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span style="font-size: 11px; color: var(--green); font-weight: 500;">Stored</span>
+                      </div>
+                    </div>
+                    <div class="list-row" style="padding: 13px 14px;">
+                      <div class="row-icon" style="background: rgba(175,82,222,0.1); color: var(--purple); width: 36px; height: 36px; border-radius: 10px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 14px; font-weight: 600; display: block;">University Diploma</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Uploaded Jan 28 &middot; 1.8 MB</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span style="font-size: 11px; color: var(--green); font-weight: 500;">Stored</span>
+                      </div>
+                    </div>
+                    <div class="list-row" style="padding: 13px 14px;">
+                      <div class="row-icon" style="background: rgba(255,149,0,0.1); color: var(--orange); width: 36px; height: 36px; border-radius: 10px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 14px; font-weight: 600; display: block;">Land Deed</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Uploaded Jan 25 &middot; 3.1 MB</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span style="font-size: 11px; color: var(--green); font-weight: 500;">Stored</span>
+                      </div>
+                    </div>
+                    <div class="list-row" style="padding: 13px 14px;">
+                      <div class="row-icon" style="background: rgba(52,199,89,0.1); color: var(--green); width: 36px; height: 36px; border-radius: 10px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                      </div>
+                      <div style="flex: 1;">
+                        <span class="row-text" style="font-size: 14px; font-weight: 600; display: block;">Business License</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Uploaded Jan 20 &middot; 1.2 MB</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span style="font-size: 11px; color: var(--green); font-weight: 500;">Stored</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <a class="cta-btn primary" style="margin-top: 14px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Add Document
+                  </span>
+                </a>
+
+              </div>
+
+              <div class="tab-bar">
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  <span class="tab-label">Home</span>
+                </div>
+                <div class="tab-item active">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span class="tab-label">Documents</span>
+                </div>
+                <div class="tab-item">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  <span class="tab-label">Settings</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 9: Upload Document -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">9</div>
+          <span class="step-title">Upload</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:45</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Vault</span></div>
+                <span class="nav-inline-title">Add Document</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+
+                <!-- Document Type Selector -->
+                <div style="padding: 14px 16px 6px;">
+                  <div style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 3px;">Upload a Document</div>
+                  <div style="font-size: 13px; color: var(--text-secondary);">Select a type, then scan or upload a photo</div>
+                </div>
+
+                <div style="margin: 8px 16px 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-tertiary); letter-spacing: 0.04em; margin-bottom: 8px;">DOCUMENT TYPE</div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <div style="background: #f0f7ff; border: 1.5px solid rgba(0,122,255,0.3); border-radius: 12px; padding: 12px; text-align: center;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.5" style="margin-bottom: 4px;"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M7 16h4"/></svg>
+                      <div style="font-size: 12px; font-weight: 600; color: var(--blue);">National ID</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border: 1.5px solid transparent; border-radius: 12px; padding: 12px; text-align: center;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" style="margin-bottom: 4px;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                      <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Diploma</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border: 1.5px solid transparent; border-radius: 12px; padding: 12px; text-align: center;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" style="margin-bottom: 4px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                      <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Land Deed</div>
+                    </div>
+                    <div style="background: var(--fill-secondary); border: 1.5px solid transparent; border-radius: 12px; padding: 12px; text-align: center;">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" style="margin-bottom: 4px;"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                      <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">License</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Upload Area -->
+                <div style="margin: 14px 16px 0;">
+                  <div style="border: 2px dashed var(--separator); border-radius: 16px; padding: 28px 16px; text-align: center; background: var(--fill-tertiary);">
+                    <div style="width: 48px; height: 48px; border-radius: 50%; background: rgba(0,122,255,0.08); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <div style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 3px;">Scan or Upload</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Take a photo or select from your gallery</div>
+                  </div>
+                </div>
+
+                <!-- Encryption Notice -->
+                <div class="callout green-c" style="margin-top: 12px;">
+                  <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ha-green)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Encrypted on your device
+                  </h4>
+                  <p>Your document is encrypted with your wallet key before it leaves your phone. Nobody else can read it — not even us.</p>
+                </div>
+
+                <a class="cta-btn primary" style="margin-top: 10px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    Encrypt &amp; Store
+                  </span>
+                </a>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+
+      <!-- 10: Stored Confirmation -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">10</div>
+          <span class="step-title">Stored</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:46</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Vault</span></div>
+                <span class="nav-inline-title">Confirmation</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div class="phone-hero" style="padding-top: 10px; padding-bottom: 6px;">
+                  <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--green); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <h2 style="font-size: 20px; color: var(--green);">Document Stored</h2>
+                  <div class="hero-sub">Encrypted and saved to the decentralized network</div>
+                </div>
+
+                <!-- Document Details -->
+                <div class="proof-section">
+                  <div class="proof-section-title green-t">Storage Details</div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span class="proof-key">Type</span>
+                    <span class="proof-val">National ID</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                    <span class="proof-key">Uploaded</span>
+                    <span class="proof-val">Jan 31, 2026</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+                    <span class="proof-key">Size</span>
+                    <span class="proof-val">2.4 MB</span>
+                  </div>
+                </div>
+
+                <div class="proof-section" style="margin-top: 6px;">
+                  <div class="proof-section-title" style="color: var(--blue);">On-Chain Record</div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    <span class="proof-key">IPFS CID</span>
+                    <span class="proof-val" style="font-family: 'SF Mono', monospace; font-size: 11px;">Qm7x...k3fR</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a4 4 0 0 0-8 0v2"/></svg>
+                    <span class="proof-key">Chain Hash</span>
+                    <span class="proof-val" style="font-family: 'SF Mono', monospace; font-size: 11px;">0xa3f...8b21</span>
+                  </div>
+                  <div class="proof-row">
+                    <svg class="icon-svg-sm" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span class="proof-key">Encryption</span>
+                    <span class="proof-val">AES-256-GCM</span>
+                  </div>
+                </div>
+
+                <div class="callout accent" style="margin-top: 10px;">
+                  <h4>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Only YOU can access this
+                  </h4>
+                  <p>This document is encrypted with your wallet key. Only your wallet can decrypt and view it. Even if someone accesses the file, they can't read it.</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 16px;">
+                  <a class="cta-btn outline" style="margin: 0;">View Document</a>
+                  <a class="cta-btn primary" style="margin: 0;">Share Proof</a>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FLOW 5: Recovery -->
+    <div class="section-divider">
+      <div class="section-divider-line"></div>
+      <span class="section-divider-text">Recovery</span>
+      <div class="section-divider-line"></div>
+    </div>
+
+    <div class="journey-row" style="justify-content: center;">
+
+      <!-- 11: Recovery -->
+      <div class="journey-step">
+        <div class="step-header">
+          <div class="step-number">11</div>
+          <span class="step-title">Recovery</span>
+        </div>
+        <div class="phone-frame">
+          <div class="phone-screen">
+            <div class="dynamic-island"></div>
+            <div class="screen-layout">
+              <div class="status-bar">
+                <span class="status-bar-left">9:41</span>
+                <span class="status-bar-right">
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 8h2v4H1zM5 5h2v7H5zM9 2h2v10H9zM13 0h2v12h-2z" opacity=".9"/></svg>
+                  <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 3a7 7 0 0 1 5 2.1l-1.3 1.3A5 5 0 0 0 8 5a5 5 0 0 0-3.7 1.4L3 5.1A7 7 0 0 1 8 3zm0 4a3 3 0 0 1 2.2 1l-2.2 2.5L5.8 8A3 3 0 0 1 8 7z"/></svg>
+                  <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="1" width="20" height="10" rx="2" stroke="currentColor" stroke-width="1" fill="none" opacity=".35"/><rect x="21" y="3.5" width="2" height="5" rx="1" opacity=".35"/><rect x="1.5" y="2.5" width="15" height="7" rx="1"/></svg>
+                </span>
+              </div>
+              <div class="nav-inline">
+                <div class="nav-inline-left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg><span>Settings</span></div>
+                <span class="nav-inline-title">Recovery</span>
+                <span class="nav-inline-right"></span>
+              </div>
+              <div class="scroll-content">
+                <div class="phone-hero" style="padding-top: 14px;">
+                  <div style="width: 56px; height: 56px; border-radius: 16px; background: rgba(0,122,255,0.08); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.5"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                  </div>
+                  <h2 style="font-size: 20px;">Restore Your Documents</h2>
+                  <div class="hero-sub">Connect your wallet to recover all your encrypted documents on this device</div>
+                </div>
+
+                <!-- Wallet Connect -->
+                <div style="margin: 10px 16px 0; padding: 14px; background: var(--fill-secondary); border-radius: 12px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center;">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <div style="flex: 1;">
+                      <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">Wallet Connected</div>
+                      <div style="font-size: 12px; color: var(--text-tertiary); font-family: 'SF Mono', monospace;">0x7a3b...f291</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--green);"></div>
+                      <span style="font-size: 11px; color: var(--green); font-weight: 500;">Active</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Found Documents -->
+                <div style="margin: 14px 16px 0; text-align: center; padding: 20px 0;">
+                  <div style="font-size: 40px; font-weight: 800; color: var(--blue); margin-bottom: 2px;">4</div>
+                  <div style="font-size: 14px; color: var(--text-secondary); font-weight: 500;">documents found on-chain</div>
+                </div>
+
+                <div class="list-group" style="margin-bottom: 0;">
+                  <div class="list-row">
+                    <div class="row-icon" style="background: rgba(0,122,255,0.1); color: var(--blue);">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 13px;">National ID</span>
+                    <span class="row-value">2.4 MB</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon" style="background: rgba(175,82,222,0.1); color: var(--purple);">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 13px;">University Diploma</span>
+                    <span class="row-value">1.8 MB</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon" style="background: rgba(255,149,0,0.1); color: var(--orange);">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 13px;">Land Deed</span>
+                    <span class="row-value">3.1 MB</span>
+                  </div>
+                  <div class="list-row">
+                    <div class="row-icon" style="background: rgba(52,199,89,0.1); color: var(--green);">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    </div>
+                    <span class="row-text" style="font-size: 13px;">Business License</span>
+                    <span class="row-value">1.2 MB</span>
+                  </div>
+                </div>
+
+                <a class="cta-btn primary" style="margin-top: 14px;">
+                  <span style="display: inline-flex; align-items: center; gap: 6px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                    Restore All Documents
+                  </span>
+                </a>
+                <a class="cta-btn outline">Select Documents</a>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Privacy Model -->
+    <div class="insight-box" style="margin-bottom: 48px;">
+      <h3>How We Protect Your Privacy</h3>
+      <div class="insight-grid">
+        <div class="insight-item">
+          <div class="insight-icon blue-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h4>Verified Securely</h4>
+          <p>Your data is checked inside a protected environment. Nobody — not even us — can see your personal information during verification.</p>
+        </div>
+        <div class="insight-item">
+          <div class="insight-icon red-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </div>
+          <h4>Personal Data Deleted</h4>
+          <p>Your name, date of birth, photos, and biometrics are checked then permanently deleted. They are never saved anywhere.</p>
+        </div>
+        <div class="insight-item">
+          <div class="insight-icon green-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <h4>Tamper-Proof Record</h4>
+          <p>Only your verified status is saved: which provider, your country, and that you passed. Nothing personal — ever.</p>
+        </div>
+      </div>
+    </div>
+
+
+  </div>
+</body>
+</html>
