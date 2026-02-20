@@ -1,8 +1,8 @@
 /**
  * Domain Configuration Registry
  *
- * Provides configurable domain-specific values that were previously hardcoded.
- * Enables the SDK to be customized for different use cases (lending, gaming, governance, etc.)
+ * Provides configurable domain-specific values.
+ * Register custom domain configs via registerDomainConfig() for your use case.
  */
 
 // ============= Types =============
@@ -65,157 +65,7 @@ export interface DomainConfig {
   custom?: Record<string, unknown>;
 }
 
-// ============= Preset Configurations =============
-
-/**
- * Lending/Finance domain configuration
- */
-export const LENDING_DOMAIN_CONFIG: DomainConfig = {
-  name: 'lending',
-  version: '1.0.0',
-
-  entityStatuses: {
-    statuses: ['active', 'inactive', 'pending', 'suspended', 'completed', 'defaulted'],
-    defaultStatus: 'pending',
-    terminalStatuses: ['completed', 'defaulted'],
-  },
-
-  computationTypes: {
-    types: ['aggregate', 'average', 'trend', 'ratio', 'risk_score', 'credit_score'],
-  },
-
-  dataSources: {
-    types: ['plaid', 'stripe', 'shopify', 'gusto', 'experian', 'custom'],
-  },
-
-  approvalTypes: {
-    types: ['status_change', 'rate_change', 'limit_change', 'withdrawal', 'custom'],
-    requiresSignature: ['withdrawal', 'rate_change'],
-  },
-
-  timeUnits: {
-    defaultUnit: 'days',
-    allowedUnits: ['blocks', 'seconds', 'days', 'months'],
-  },
-
-  thresholds: {
-    collateral_ratio: { default: 1.25, min: 1.0, max: 3.0 },
-    min_credit_score: { default: 600, min: 300, max: 850 },
-  },
-};
-
-/**
- * Gaming domain configuration
- */
-export const GAMING_DOMAIN_CONFIG: DomainConfig = {
-  name: 'gaming',
-  version: '1.0.0',
-
-  entityStatuses: {
-    statuses: ['active', 'inactive', 'banned', 'suspended', 'completed'],
-    defaultStatus: 'active',
-    terminalStatuses: ['banned'],
-  },
-
-  computationTypes: {
-    types: ['score', 'rank', 'leaderboard', 'achievement', 'stats', 'progression'],
-  },
-
-  dataSources: {
-    types: ['steam', 'epic', 'playstation', 'xbox', 'custom'],
-  },
-
-  approvalTypes: {
-    types: ['ban', 'unban', 'reward', 'penalty', 'custom'],
-    requiresSignature: ['ban', 'reward'],
-  },
-
-  timeUnits: {
-    defaultUnit: 'blocks',
-    allowedUnits: ['blocks', 'seconds', 'rounds', 'seasons'],
-  },
-
-  thresholds: {
-    max_players: { default: 100, min: 2 },
-    round_timeout: { default: 300, min: 30 },
-  },
-};
-
-/**
- * Governance/DAO domain configuration
- */
-export const GOVERNANCE_DOMAIN_CONFIG: DomainConfig = {
-  name: 'governance',
-  version: '1.0.0',
-
-  entityStatuses: {
-    statuses: ['draft', 'active', 'passed', 'failed', 'executed', 'cancelled'],
-    defaultStatus: 'draft',
-    terminalStatuses: ['executed', 'cancelled', 'failed'],
-  },
-
-  computationTypes: {
-    types: ['vote_count', 'quorum_check', 'approval_rate', 'delegation_power'],
-  },
-
-  dataSources: {
-    types: ['snapshot', 'on_chain', 'off_chain', 'custom'],
-  },
-
-  approvalTypes: {
-    types: ['proposal_create', 'proposal_execute', 'parameter_change', 'emergency', 'custom'],
-    requiresSignature: ['proposal_execute', 'emergency'],
-  },
-
-  timeUnits: {
-    defaultUnit: 'blocks',
-    allowedUnits: ['blocks', 'seconds', 'days', 'epochs'],
-  },
-
-  thresholds: {
-    quorum: { default: 0.04, min: 0.01, max: 0.5 },  // 4% default quorum
-    approval_threshold: { default: 0.5, min: 0.5, max: 1.0 },  // Simple majority
-    voting_period_blocks: { default: 40320, min: 1000 },  // ~7 days at 15s blocks
-  },
-};
-
-/**
- * Marketplace domain configuration
- */
-export const MARKETPLACE_DOMAIN_CONFIG: DomainConfig = {
-  name: 'marketplace',
-  version: '1.0.0',
-
-  entityStatuses: {
-    statuses: ['draft', 'active', 'sold', 'cancelled', 'expired', 'disputed'],
-    defaultStatus: 'draft',
-    terminalStatuses: ['sold', 'cancelled'],
-  },
-
-  computationTypes: {
-    types: ['price_history', 'volume', 'floor_price', 'trending', 'rarity'],
-  },
-
-  dataSources: {
-    types: ['opensea', 'blur', 'custom'],
-  },
-
-  approvalTypes: {
-    types: ['listing', 'sale', 'cancellation', 'dispute_resolution', 'custom'],
-    requiresSignature: ['sale', 'dispute_resolution'],
-  },
-
-  timeUnits: {
-    defaultUnit: 'seconds',
-    allowedUnits: ['blocks', 'seconds', 'days'],
-  },
-
-  thresholds: {
-    platform_fee: { default: 0.025, min: 0, max: 0.1 },  // 2.5% default fee
-    min_listing_duration: { default: 3600, min: 60 },     // 1 hour minimum
-    escrow_timeout: { default: 86400, min: 3600 },        // 24 hour timeout
-  },
-};
+// ============= Default Configuration =============
 
 /**
  * Attestation/Identity domain configuration (L{CORE})
@@ -257,10 +107,6 @@ export const ATTESTATION_DOMAIN_CONFIG: DomainConfig = {
 // ============= Configuration Registry =============
 
 const configRegistry: Map<string, DomainConfig> = new Map([
-  ['lending', LENDING_DOMAIN_CONFIG],
-  ['gaming', GAMING_DOMAIN_CONFIG],
-  ['governance', GOVERNANCE_DOMAIN_CONFIG],
-  ['marketplace', MARKETPLACE_DOMAIN_CONFIG],
   ['attestation', ATTESTATION_DOMAIN_CONFIG],
 ]);
 

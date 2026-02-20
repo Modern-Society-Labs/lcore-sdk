@@ -1,7 +1,7 @@
 /**
  * Data Source Handlers
  *
- * Handlers for syncing external data from various sources (Plaid, Stripe, etc.).
+ * Generic handlers for syncing external data from any source.
  *
  * CUSTOMIZATION GUIDE:
  * 1. Add source-specific validation in validateRecordForSource()
@@ -42,14 +42,6 @@ interface RawRecordInput {
   metadata?: Record<string, unknown>;
 }
 
-// ============= Supported Sources =============
-
-/**
- * List of supported data sources.
- * CUSTOMIZE: Add your source types here
- */
-const SUPPORTED_SOURCES = ['plaid', 'stripe', 'shopify', 'custom'];
-
 // ============= Validation =============
 
 /**
@@ -58,10 +50,9 @@ const SUPPORTED_SOURCES = ['plaid', 'stripe', 'shopify', 'custom'];
  */
 function validateRecordForSource(
   record: RawRecordInput,
-  sourceType: string,
+  _sourceType: string,
   index: number
 ): void {
-  // Common validation
   if (!record.record_type || typeof record.record_type !== 'string') {
     throw new Error(`Record ${index}: record_type is required`);
   }
@@ -75,36 +66,8 @@ function validateRecordForSource(
     throw new Error(`Record ${index}: invalid timestamp format (use YYYY-MM-DD or ISO 8601)`);
   }
 
-  // Source-specific validation
-  switch (sourceType) {
-    case 'plaid':
-      // Plaid transactions should have amount
-      if (record.amount !== undefined && typeof record.amount !== 'number') {
-        throw new Error(`Record ${index}: amount must be a number`);
-      }
-      break;
-
-    case 'stripe':
-      // Stripe payments require amount
-      if (typeof record.amount !== 'number') {
-        throw new Error(`Record ${index}: amount is required for Stripe records`);
-      }
-      break;
-
-    case 'shopify':
-      // Shopify orders require amount
-      if (typeof record.amount !== 'number') {
-        throw new Error(`Record ${index}: amount is required for Shopify records`);
-      }
-      break;
-
-    case 'custom':
-      // Custom sources have no additional requirements
-      break;
-
-    default:
-      // Unknown source - allow but log warning
-      console.warn(`Unknown source type: ${sourceType}`);
+  if (record.amount !== undefined && typeof record.amount !== 'number') {
+    throw new Error(`Record ${index}: amount must be a number`);
   }
 }
 
@@ -112,8 +75,8 @@ function validateRecordForSource(
  * Transform a raw record to normalized format.
  * CUSTOMIZE: Add source-specific transformations
  */
-function transformRecord(record: RawRecordInput, sourceType: string): DataRecordInput {
-  const base: DataRecordInput = {
+function transformRecord(record: RawRecordInput): DataRecordInput {
+  return {
     source_record_id: record.source_record_id,
     record_type: record.record_type,
     amount: record.amount,
@@ -122,25 +85,6 @@ function transformRecord(record: RawRecordInput, sourceType: string): DataRecord
     is_pending: record.is_pending || false,
     metadata: record.metadata,
   };
-
-  // Source-specific transformations
-  switch (sourceType) {
-    case 'plaid':
-      // Plaid amounts: positive = debit, negative = credit
-      // Normalize: keep as-is (Plaid convention)
-      break;
-
-    case 'stripe':
-      // Stripe amounts are in cents - could convert to dollars if needed
-      // For now, keep raw values
-      break;
-
-    case 'shopify':
-      // Shopify amounts are in store currency
-      break;
-  }
-
-  return base;
 }
 
 // ============= Sanitization =============
@@ -184,10 +128,6 @@ export const handleSyncData: AdvanceHandler = async (
     throw new Error('Valid source_type is required');
   }
 
-  if (!SUPPORTED_SOURCES.includes(source_type)) {
-    console.warn(`Unknown source_type: ${source_type}. Proceeding anyway.`);
-  }
-
   // Validate records array
   if (!Array.isArray(records)) {
     throw new Error('Records must be an array');
@@ -211,7 +151,7 @@ export const handleSyncData: AdvanceHandler = async (
     }
 
     validateRecordForSource(record, source_type, i);
-    validatedRecords.push(transformRecord(record, source_type));
+    validatedRecords.push(transformRecord(record));
   }
 
   // Get or create entity

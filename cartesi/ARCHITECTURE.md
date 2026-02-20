@@ -2,11 +2,11 @@
 
 ## Overview
 
-This document provides a comprehensive guide to the Cartesi SQLite-based rollup data layer architecture. Originally designed for a lending platform with Plaid integration, this framework can be generalized to handle data ingestion from **any external data source** and expose query endpoints for that data.
+This document provides a comprehensive guide to the Cartesi SQLite-based rollup data layer architecture. This framework handles data ingestion from **any external data source** and exposes query endpoints for that data.
 
 The architecture is built on three core principles:
 1. **Deterministic State** - All state changes happen through verifiable transactions
-2. **Data Source Agnostic** - The pattern works for any external API (Plaid, Stripe, Shopify, etc.)
+2. **Data Source Agnostic** - The pattern works for any external API
 3. **Proof-Ready** - Built-in support for zkProofs and data verification
 
 ---
@@ -30,10 +30,10 @@ The architecture is built on three core principles:
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           EXTERNAL WORLD                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │  Plaid   │  │  Stripe  │  │ Shopify  │  │  Custom  │  │  Any API │      │
-│  │   API    │  │   API    │  │   API    │  │   API    │  │          │      │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                      │
+│  │ Source A │  │ Source B │  │  Custom  │  │  Any API │                      │
+│  │   API    │  │   API    │  │   API    │  │          │                      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘                      │
 │       │             │             │             │             │             │
 │       └─────────────┴─────────────┴─────────────┴─────────────┘             │
 │                                   │                                          │
@@ -389,7 +389,7 @@ main().catch(e => process.exit(1));
 
 ## Data Flow Patterns
 
-### Pattern 1: External Data Ingestion (e.g., Plaid Transactions)
+### Pattern 1: External Data Ingestion
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -445,7 +445,7 @@ export const handleSyncData: AdvanceHandler = async (data, payload) => {
 
 ---
 
-### Pattern 2: Derived Computations (e.g., DSCR Calculation)
+### Pattern 2: Derived Computations
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -611,7 +611,7 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE TABLE IF NOT EXISTS data_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_id TEXT NOT NULL,
-  source_type TEXT NOT NULL,        -- 'plaid', 'stripe', 'shopify', etc.
+  source_type TEXT NOT NULL,        -- e.g. 'api_a', 'api_b', 'custom'
   source_record_id TEXT,            -- External ID for deduplication
   record_type TEXT NOT NULL,        -- 'transaction', 'order', 'event', etc.
   amount INTEGER,                   -- Normalized to smallest unit
@@ -665,7 +665,7 @@ CREATE TABLE IF NOT EXISTS proofs (
 interface SyncDataPayload {
   action: 'sync_data';
   entity_id: string;
-  source_type: 'plaid' | 'stripe' | 'shopify' | 'custom';
+  source_type: string;
   records: DataRecordInput[];
   cursor?: string;
 }
@@ -710,91 +710,91 @@ export const handleSyncData: AdvanceHandler = async (data, payload) => {
 
 ## Adding a New Data Source (Step-by-Step)
 
-### Example: Adding Stripe Payment Data
+### Example: Adding a Custom Data Source
 
 #### Step 1: Define Schema Extension (db.ts)
 
 ```typescript
 // Add to initDatabase()
 db.run(`
-  CREATE TABLE IF NOT EXISTS stripe_payments (
+  CREATE TABLE IF NOT EXISTS my_source_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_id TEXT NOT NULL,
-    stripe_payment_id TEXT UNIQUE,
-    amount INTEGER NOT NULL,
-    currency TEXT DEFAULT 'usd',
+    external_id TEXT UNIQUE,
+    value REAL NOT NULL,
+    category TEXT,
     status TEXT,
-    payment_method TEXT,
+    recorded_at TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (entity_id) REFERENCES entities(id)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_stripe_entity ON stripe_payments(entity_id);
-  CREATE INDEX IF NOT EXISTS idx_stripe_status ON stripe_payments(status);
+  CREATE INDEX IF NOT EXISTS idx_my_source_entity ON my_source_records(entity_id);
+  CREATE INDEX IF NOT EXISTS idx_my_source_status ON my_source_records(status);
 `);
 ```
 
 #### Step 2: Define Types & CRUD (db.ts)
 
 ```typescript
-export interface StripePayment {
+export interface MySourceRecord {
   id: number;
   entity_id: string;
-  stripe_payment_id: string | null;
-  amount: number;
-  currency: string;
+  external_id: string | null;
+  value: number;
+  category: string | null;
   status: string | null;
-  payment_method: string | null;
+  recorded_at: string;
   created_at: string;
 }
 
-export interface StripePaymentInput {
-  stripe_payment_id?: string;
-  amount: number;
-  currency?: string;
+export interface MySourceRecordInput {
+  external_id?: string;
+  value: number;
+  category?: string;
   status?: string;
-  payment_method?: string;
+  recorded_at: string;
 }
 
-export function insertStripePayments(
+export function insertMySourceRecords(
   entityId: string,
-  payments: StripePaymentInput[]
+  records: MySourceRecordInput[]
 ): number {
   const database = getDatabase();
   let insertedCount = 0;
 
-  for (const payment of payments) {
+  for (const record of records) {
     try {
       database.run(
-        `INSERT INTO stripe_payments
-         (entity_id, stripe_payment_id, amount, currency, status, payment_method)
+        `INSERT INTO my_source_records
+         (entity_id, external_id, value, category, status, recorded_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(stripe_payment_id) DO UPDATE SET
-           amount = excluded.amount,
+         ON CONFLICT(external_id) DO UPDATE SET
+           value = excluded.value,
            status = excluded.status`,
         [
           entityId,
-          payment.stripe_payment_id || null,
-          payment.amount,
-          payment.currency || 'usd',
-          payment.status || null,
-          payment.payment_method || null,
+          record.external_id || null,
+          record.value,
+          record.category || null,
+          record.status || null,
+          record.recorded_at,
         ]
       );
       insertedCount++;
     } catch (error) {
-      console.error(`Failed to insert Stripe payment: ${error}`);
+      console.error(`Failed to insert record: ${error}`);
     }
   }
 
   return insertedCount;
 }
 
-export function getStripePaymentsByEntity(entityId: string): StripePayment[] {
+export function getMySourceRecordsByEntity(entityId: string): MySourceRecord[] {
   const database = getDatabase();
   const result = database.exec(
-    `SELECT id, entity_id, stripe_payment_id, amount, currency, status, payment_method, created_at
-     FROM stripe_payments WHERE entity_id = ? ORDER BY created_at DESC`,
+    `SELECT id, entity_id, external_id, value, category, status, recorded_at, created_at
+     FROM my_source_records WHERE entity_id = ? ORDER BY recorded_at DESC`,
     [entityId]
   );
 
@@ -804,54 +804,54 @@ export function getStripePaymentsByEntity(entityId: string): StripePayment[] {
   return firstResult.values.map(row => ({
     id: row[0] as number,
     entity_id: row[1] as string,
-    stripe_payment_id: row[2] as string | null,
-    amount: row[3] as number,
-    currency: row[4] as string,
+    external_id: row[2] as string | null,
+    value: row[3] as number,
+    category: row[4] as string | null,
     status: row[5] as string | null,
-    payment_method: row[6] as string | null,
+    recorded_at: row[6] as string,
     created_at: row[7] as string,
   }));
 }
 ```
 
-#### Step 3: Create Handler (handlers/stripe.ts)
+#### Step 3: Create Handler (handlers/my-source.ts)
 
 ```typescript
 import { AdvanceHandler, InspectHandler, InspectQuery, AdvanceRequestData } from '../router';
 import {
-  insertStripePayments,
-  getStripePaymentsByEntity,
+  insertMySourceRecords,
+  getMySourceRecordsByEntity,
   getEntityById,
   createEntity,
-  StripePaymentInput,
+  MySourceRecordInput,
 } from '../db';
 
-interface SyncStripePaymentsPayload {
-  action: 'sync_stripe_payments';
+interface SyncMySourcePayload {
+  action: 'sync_my_source';
   entity_id: string;
-  payments: StripePaymentInput[];
+  records: MySourceRecordInput[];
 }
 
-const MAX_PAYMENTS_PER_SYNC = 500;
+const MAX_RECORDS_PER_SYNC = 500;
 
-export const handleSyncStripePayments: AdvanceHandler = async (
+export const handleSyncMySource: AdvanceHandler = async (
   data: AdvanceRequestData,
   payload: unknown
 ) => {
-  const { entity_id, payments } = payload as SyncStripePaymentsPayload;
+  const { entity_id, records } = payload as SyncMySourcePayload;
 
   // Validate
   if (!entity_id) throw new Error('entity_id is required');
-  if (!Array.isArray(payments)) throw new Error('payments must be array');
-  if (payments.length > MAX_PAYMENTS_PER_SYNC) {
-    throw new Error(`Maximum ${MAX_PAYMENTS_PER_SYNC} payments per sync`);
+  if (!Array.isArray(records)) throw new Error('records must be array');
+  if (records.length > MAX_RECORDS_PER_SYNC) {
+    throw new Error(`Maximum ${MAX_RECORDS_PER_SYNC} records per sync`);
   }
 
-  // Validate each payment
-  for (let i = 0; i < payments.length; i++) {
-    const p = payments[i];
-    if (typeof p?.amount !== 'number') {
-      throw new Error(`Payment ${i}: invalid amount`);
+  // Validate each record
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+    if (typeof r?.value !== 'number') {
+      throw new Error(`Record ${i}: invalid value`);
     }
   }
 
@@ -859,21 +859,21 @@ export const handleSyncStripePayments: AdvanceHandler = async (
   let entity = getEntityById(entity_id);
   if (!entity) entity = createEntity({ id: entity_id });
 
-  // Insert payments
-  const insertedCount = insertStripePayments(entity.id, payments);
+  // Insert records
+  const insertedCount = insertMySourceRecords(entity.id, records);
 
   return {
     status: 'accept',
     response: {
-      action: 'sync_stripe_payments',
+      action: 'sync_my_source',
       success: true,
       entity_id,
-      payments_synced: insertedCount,
+      records_synced: insertedCount,
     },
   };
 };
 
-export const handleInspectStripePayments: InspectHandler = async (
+export const handleInspectMySource: InspectHandler = async (
   query: InspectQuery
 ) => {
   const { params } = query;
@@ -882,13 +882,12 @@ export const handleInspectStripePayments: InspectHandler = async (
     return { error: 'entity_id parameter required' };
   }
 
-  const payments = getStripePaymentsByEntity(params.entity_id);
+  const records = getMySourceRecordsByEntity(params.entity_id);
 
   return {
     entity_id: params.entity_id,
-    payment_count: payments.length,
-    payments: payments.slice(0, 100), // Limit response size
-    total_amount: payments.reduce((sum, p) => sum + p.amount, 0),
+    record_count: records.length,
+    records: records.slice(0, 100), // Limit response size
   };
 };
 ```
@@ -896,7 +895,7 @@ export const handleInspectStripePayments: InspectHandler = async (
 #### Step 4: Register Handlers (handlers/index.ts)
 
 ```typescript
-export { handleSyncStripePayments, handleInspectStripePayments } from './stripe';
+export { handleSyncMySource, handleInspectMySource } from './my-source';
 ```
 
 #### Step 5: Add Routes (index.ts)
@@ -905,11 +904,11 @@ export { handleSyncStripePayments, handleInspectStripePayments } from './stripe'
 const routeConfig: RouteConfig = {
   advance: {
     // ... existing handlers
-    sync_stripe_payments: handleSyncStripePayments,
+    sync_my_source: handleSyncMySource,
   },
   inspect: {
     // ... existing handlers
-    stripe_payments: handleInspectStripePayments,
+    my_source: handleInspectMySource,
   },
 };
 ```
@@ -1053,7 +1052,7 @@ const cursor = getSyncCursor(entityId, sourceType);
 
 This framework provides a robust foundation for building Cartesi rollup applications that need to:
 
-1. **Ingest data** from external sources (Plaid, Stripe, any API)
+1. **Ingest data** from external sources (any API)
 2. **Store data** deterministically in SQLite
 3. **Compute derived values** from stored data
 4. **Verify data authenticity** via proofs
