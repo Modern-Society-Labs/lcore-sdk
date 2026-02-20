@@ -35,7 +35,6 @@
     "create:claim": "npm run run:tsc -- src/scripts/generate-receipt.ts",
     "docker:build": "docker build -f attestor.dockerfile -t attestor-core:latest .",
     "docker:image-hash": "docker inspect --format='{{.Id}}' attestor-core:latest | cut -d: -f2 | sed 's/^/0x/'",
-    "commitlint": "commitlint --edit",
     "download:zk-files": "node node_modules/@reclaimprotocol/zk-symmetric-crypto/lib/scripts/download-files",
     "generate:toprf-keys": "npm run run:tsc -- src/scripts/generate-toprf-keys.ts",
     "publish:pkg": "npm publish --access public"
@@ -106,8 +105,6 @@
   },
   "devDependencies": {
     "@adiwajshing/eslint-config": "github:adiwajshing/eslint-config",
-    "@commitlint/cli": "^17.8.1",
-    "@commitlint/config-conventional": "^17.8.1",
     "@kayahr/text-encoding": "^2.0.1",
     "@typechain/ethers-v5": "^11.1.2",
     "@types/chance": "^1.1.6",
