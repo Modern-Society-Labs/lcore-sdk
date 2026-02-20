@@ -1,13 +1,7 @@
 /**
- * Database module for Locale L{CORE} AVS
+ * Database module for L{CORE}
  *
  * Provides Supabase client and type-safe database operations.
- *
- * Data Classification:
- * - indexed_* tables: Read cache from on-chain events (synced via The Graph)
- * - admin_* tables: Internal platform administration
- * - operator_* tables: Operator management workflow
- * - analytics tables: Metrics and reporting
  */
 
 export {

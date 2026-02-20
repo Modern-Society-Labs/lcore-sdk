@@ -12,8 +12,6 @@ import { handleAuthRoute } from '#src/api/routes/auth.ts'
 import { handleDeviceRoute } from '#src/api/routes/device.ts'
 import { handleKycRoute } from '#src/api/routes/kyc.ts'
 import { handleLCoreRoute } from '#src/api/routes/lcore.ts'
-import { handleOperatorsRoute } from '#src/api/routes/operators.ts'
-import { handleStatsRoute } from '#src/api/routes/stats.ts'
 import { handleCorsPrelight, sendError, setCorsHeaders } from '#src/api/utils/http.ts'
 
 /**
@@ -57,14 +55,6 @@ export async function handleApiRequest(
 
 		if(path.startsWith('/api/audit')) {
 			return await handleAuditRoute(req, res, path)
-		}
-
-		if(path.startsWith('/api/operators')) {
-			return await handleOperatorsRoute(req, res, path)
-		}
-
-		if(path.startsWith('/api/stats')) {
-			return await handleStatsRoute(req, res, path)
 		}
 
 		if(path.startsWith('/api/lcore')) {

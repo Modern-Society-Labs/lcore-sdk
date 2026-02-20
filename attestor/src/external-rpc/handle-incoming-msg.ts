@@ -7,7 +7,6 @@ import { benchmark } from '#src/external-rpc/benchmark.ts'
 import type { CreateClaimResponse, ExternalRPCClient, ExternalRPCErrorResponse, ExternalRPCIncomingMsg, ExternalRPCOutgoingMsg, ExternalRPCResponse, RPCCreateClaimOptions } from '#src/external-rpc/types.ts'
 import { generateRpcRequestId, getCurrentMemoryUsage, getWsApiUrlFromBaseUrl, RPC_MSG_BRIDGE, sendMessageToApp, waitForResponse } from '#src/external-rpc/utils.ts'
 import { ALL_ENC_ALGORITHMS, makeExternalRpcOprfOperator, makeExternalRpcZkOperator } from '#src/external-rpc/zk.ts'
-import { createClaimOnMechain } from '#src/mechain/client/create-claim-on-mechain.ts'
 import type { ClaimTunnelResponse } from '#src/proto/api.ts'
 import { extractHTMLElement, extractJSONValueIndex, generateRequstAndResponseFromTranscript } from '#src/providers/http/utils.ts'
 import type { OPRFOperators, ProviderParams, ProviderSecretParams, ZKOperators } from '#src/types/index.ts'
@@ -108,37 +107,6 @@ async function _handleIncomingMessage(req: ExternalRPCIncomingMsg): Promise<
 		})
 		const response = mapToCreateClaimResponse(claimTunnelRes)
 		return { type: 'createClaimDone', response }
-	case 'createClaimOnMechain':
-		const mechainRes = await createClaimOnMechain({
-			...req.request,
-			context: req.request.context
-				? JSON.parse(req.request.context)
-				: undefined,
-			zkOperators: getZkOperators(
-				req.request.zkOperatorMode, req.request.zkEngine
-			),
-			oprfOperators: getOprfOperators(
-				req.request.zkOperatorMode, req.request.zkEngine
-			),
-			client: {	url: getWsApiUrlFromBaseUrl() },
-			logger,
-			onStep(step) {
-				sendMessageToApp({
-					type: 'createClaimOnMechainStep',
-					step,
-					id: req.id,
-				})
-			},
-		})
-		const claimResponses: CreateClaimResponse[] = []
-		for(let i = 0; i < mechainRes.responses.length; i++) {
-			claimResponses[i] = mapToCreateClaimResponse(mechainRes.responses[i])
-		}
-
-		return {
-			type: 'createClaimOnMechainDone',
-			response: { taskId: mechainRes.taskId, data: claimResponses },
-		}
 	case 'extractHtmlElement':
 		return {
 			type: 'extractHtmlElementDone',

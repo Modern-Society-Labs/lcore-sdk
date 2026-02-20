@@ -10,9 +10,6 @@ export { handleApiRequest, handleHealthCheck } from './routes/index.ts'
 // Auth module
 export * from './auth/index.ts'
 
-// Operators module
-export * from './operators/index.ts'
-
 // HTTP utilities
 export {
 	parseJsonBody,

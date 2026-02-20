@@ -1,7 +1,6 @@
 import type { OPRFOperator, ZKEngine, ZKOperator } from '@reclaimprotocol/zk-symmetric-crypto'
 import '#src/external-rpc/global.d.ts'
 
-import type { CreateClaimOnMechainOpts, CreateClaimOnMechainStep } from '#src/mechain/types/index.ts'
 import type { AuthenticationRequest } from '#src/proto/api.ts'
 import type { extractHTMLElement, extractJSONValueIndex } from '#src/providers/http/utils.ts'
 import type {
@@ -40,11 +39,6 @@ export type RPCCreateClaimOptions<N extends ProviderName = any> = Omit<
 	'zkOperators' | 'context' | 'client'
 > & CreateClaimRPCBaseOpts
 
-export type RPCCreateClaimOnMechainOptions<N extends ProviderName = any> = Omit<
-	CreateClaimOnMechainOpts<N>,
-	'zkOperators' | 'context'
-> & CreateClaimRPCBaseOpts
-
 type ExtractHTMLElementOptions = {
 	html: string
 	xpathExpression: string
@@ -70,11 +64,6 @@ type LogLevelOptions = {
 	sendLogsToApp: boolean
 }
 
-type MechainCreateResult = {
-	taskId: number
-	data: CreateClaimResponse[]
-}
-
 /**
  * Legacy V1 create claim response
  */
@@ -97,10 +86,6 @@ export type ExternalRPCClient = {
 	 * Create a claim on the attestor where the RPC SDK is hosted.
 	 */
 	createClaim(options: RPCCreateClaimOptions): Promise<CreateClaimResponse>
-	/**
-	 * Create a claim on Mechain
-	 */
-	createClaimOnMechain(opts: RPCCreateClaimOnMechainOptions): Promise<MechainCreateResult>
 	/**
 	 * Extract an HTML element from a string of HTML
 	 */
@@ -195,7 +180,6 @@ type AsResponse<T> = T & { isResponse: true }
 // spread out each key because TS can't handle
 export type ExternalRPCIncomingMsg = (
 	ExternalRPCRequest<ExternalRPCClient, 'createClaim'>
-	| ExternalRPCRequest<ExternalRPCClient, 'createClaimOnMechain'>
 	| ExternalRPCRequest<ExternalRPCClient, 'extractHtmlElement'>
 	| ExternalRPCRequest<ExternalRPCClient, 'extractJSONValueIndex'>
 	| ExternalRPCRequest<ExternalRPCClient, 'getCurrentMemoryUsage'>
@@ -244,12 +228,6 @@ export type ExternalRPCOutgoingMsg = (
 				name: 'attestor-progress'
 				step: ProofGenerationStep
 			}
-		}
-	)
-	| (
-		{
-			type: 'createClaimOnMechainStep'
-			step: CreateClaimOnMechainStep
 		}
 	)
 	| (

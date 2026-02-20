@@ -23,23 +23,9 @@ export type AuditAction =
 	// API key management
 	| 'api_key.create'
 	| 'api_key.revoke'
-	// Operator management
-	| 'operator.whitelist'
-	| 'operator.remove'
-	| 'operator.application_approve'
-	| 'operator.application_reject'
 	// System configuration
 	| 'config.update'
 	| 'config.feature_flag'
-	// Contract interactions
-	| 'contract.update_fee'
-	| 'contract.update_slashing'
-	| 'contract.pause'
-	| 'contract.unpause'
-	| 'contract.distribute_fees'
-	// Emergency actions
-	| 'emergency.pause'
-	| 'emergency.withdrawal'
 	// L{CORE} management
 	| 'lcore.add_schema_admin'
 	| 'lcore.remove_schema_admin'
