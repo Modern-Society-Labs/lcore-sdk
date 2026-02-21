@@ -25,7 +25,7 @@ import {
 } from '#src/api/auth/index.ts'
 import type { AdminRole } from '#src/db/types.ts'
 
-const VALID_ROLES: AdminRole[] = ['super_admin', 'admin', 'operator_manager', 'viewer']
+const VALID_ROLES: AdminRole[] = ['super_admin', 'admin', 'viewer']
 
 /**
  * GET /api/admins

@@ -13,7 +13,7 @@ export type Json =
 	| { [key: string]: Json | undefined }
 	| Json[]
 
-export type AdminRole = 'super_admin' | 'admin' | 'operator_manager' | 'viewer'
+export type AdminRole = 'super_admin' | 'admin' | 'viewer'
 
 // Individual table types for direct use
 

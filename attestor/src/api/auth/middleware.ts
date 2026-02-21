@@ -12,7 +12,7 @@ import { getSupabaseClient, isDatabaseConfigured } from '#src/db/index.ts'
 import type { AdminRole } from '#src/db/types.ts'
 
 /** Role hierarchy (higher index = more permissions) */
-const ROLE_HIERARCHY: AdminRole[] = ['viewer', 'operator_manager', 'admin', 'super_admin']
+const ROLE_HIERARCHY: AdminRole[] = ['viewer', 'admin', 'super_admin']
 
 export interface AuthenticatedRequest extends IncomingMessage {
 	/** Authenticated admin info */

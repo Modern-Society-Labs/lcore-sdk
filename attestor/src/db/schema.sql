@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- =============================================================================
 
 -- Admin roles enum
-CREATE TYPE admin_role AS ENUM ('super_admin', 'admin', 'operator_manager', 'viewer');
+CREATE TYPE admin_role AS ENUM ('super_admin', 'admin', 'viewer');
 
 -- Admin user accounts (wallet + email hybrid auth)
 CREATE TABLE admins (

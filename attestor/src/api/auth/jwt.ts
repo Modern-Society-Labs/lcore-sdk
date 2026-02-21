@@ -19,7 +19,7 @@ export interface JWTPayload {
 	/** Wallet address (lowercase) */
 	wallet: string
 	/** Admin role */
-	role: 'super_admin' | 'admin' | 'operator_manager' | 'viewer'
+	role: 'super_admin' | 'admin' | 'viewer'
 	/** Display name */
 	name?: string
 	/** Issued at (unix timestamp) */
