@@ -104,7 +104,7 @@ async function verifySingleOprfProof(
 			// Convert domain separator from base64
 			domainSeparator: publicSignals.toprf.domainSeparator ?
 				Buffer.from(publicSignals.toprf.domainSeparator, 'base64').toString('utf8') :
-				'reclaim',
+				'reclaim-toprf',
 			// Convert output from base64
 			output: publicSignals.toprf.output ?
 				Buffer.from(publicSignals.toprf.output, 'base64') :
