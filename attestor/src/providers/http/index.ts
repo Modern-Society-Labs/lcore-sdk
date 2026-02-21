@@ -2,7 +2,7 @@ import type { TLSConnectionOptions } from '@reclaimprotocol/tls'
 import { areUint8ArraysEqual, concatenateUint8Arrays, uint8ArrayToBinaryStr } from '@reclaimprotocol/tls'
 import { utils } from 'ethers'
 
-import { DEFAULT_HTTPS_PORT, RECLAIM_USER_AGENT } from '#src/config/index.ts'
+import { DEFAULT_HTTPS_PORT, LCORE_USER_AGENT } from '#src/config/index.ts'
 import { AttestorVersion } from '#src/proto/api.ts'
 import {
 	buildHeaders,
@@ -97,7 +97,7 @@ const HTTP_PROVIDER: Provider<'http'> = {
 				.some(k => k.toLowerCase() === 'user-agent')
 		if(!hasUserAgent) {
 			//only set user-agent if not set by provider
-			pubHeaders['User-Agent'] = RECLAIM_USER_AGENT
+			pubHeaders['User-Agent'] = LCORE_USER_AGENT
 		}
 
 		const newParams = substituteParamValues(params, secretParams)

@@ -26,11 +26,13 @@ EigenCloud provides Trusted Execution Environment (TEE) infrastructure for runni
 Before deploying, build and push your images:
 
 ```bash
-# Build Attestor image
+# Build Attestor image (from attestor/ directory)
+cd attestor
 docker build -f attestor.dockerfile -t your-registry/lcore-attestor:eigencloud .
 
-# Build Cartesi Node image
-docker build -f cartesi-node.dockerfile -t your-registry/lcore-cartesi-node:eigencloud .
+# Build Cartesi Node image (from cartesi/ directory)
+cd ../cartesi
+docker build -f node.dockerfile -t your-registry/lcore-cartesi-node:eigencloud .
 
 # Push to registry
 docker push your-registry/lcore-attestor:eigencloud
@@ -209,7 +211,8 @@ Build the production image:
 
 ```bash
 # From repository root
-docker build -f cartesi-node.dockerfile -t your-registry/lcore-cartesi-node:eigencloud .
+cd cartesi
+docker build -f node.dockerfile -t your-registry/lcore-cartesi-node:eigencloud .
 ```
 
 ### Cartesi CLI Reference
@@ -240,7 +243,7 @@ docker build -f cartesi-node.dockerfile -t your-registry/lcore-cartesi-node:eige
 │  ┌─────────────────────┐    ┌─────────────────────────┐     │
 │  │   Attestor :8001    │───▶│   Cartesi Node :10000   │     │
 │  │   - REST API        │    │   - Rollup Server       │     │
-│  │   - Reclaim zkTLS   │    │   - SQLite State        │     │
+│  │   - zkTLS           │    │   - SQLite State        │     │
 │  │   - Blockchain TX   │    │   - Inspect Queries     │     │
 │  └─────────────────────┘    └─────────────────────────┘     │
 └─────────────────────────────────────────────────────────────┘

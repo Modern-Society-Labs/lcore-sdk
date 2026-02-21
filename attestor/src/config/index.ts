@@ -3,7 +3,7 @@ import { AttestorVersion, ServiceSignatureType } from '#src/proto/api.ts'
 
 export const DEFAULT_ZK_CONCURRENCY = 10
 
-export const RECLAIM_USER_AGENT = 'reclaim/0.0.1'
+export const LCORE_USER_AGENT = 'lcore/0.0.1'
 
 export const DEFAULT_HTTPS_PORT = 443
 
@@ -64,4 +64,4 @@ export const CERT_ALLOWED_MIMETYPES = [
 	'application/octet-stream'
 ]
 
-export const BGP_WS_URL = 'wss://ris-live.ripe.net/v1/ws/?client=reclaim-hijack-detector'
+export const BGP_WS_URL = 'wss://ris-live.ripe.net/v1/ws/?client=lcore-hijack-detector'

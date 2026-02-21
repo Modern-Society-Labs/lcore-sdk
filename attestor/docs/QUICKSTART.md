@@ -127,11 +127,13 @@ Update your `.env` with the deployed `LCORE_DAPP_ADDRESS`.
 # Back to root directory
 cd ..
 
-# Build Attestor image for EigenCloud
+# Build Attestor image for EigenCloud (from attestor/ directory)
+cd attestor
 docker build -f attestor.dockerfile -t your-registry/lcore-attestor:latest .
 
-# Build Cartesi Node wrapper for EigenCloud
-docker build -f cartesi-node.dockerfile -t your-registry/lcore-cartesi-node:latest .
+# Build Cartesi Node wrapper for EigenCloud (from cartesi/ directory)
+cd ../cartesi
+docker build -f node.dockerfile -t your-registry/lcore-cartesi-node:latest .
 
 # Push to your container registry
 docker push your-registry/lcore-attestor:latest

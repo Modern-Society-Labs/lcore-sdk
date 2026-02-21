@@ -33,7 +33,7 @@ export function getApm(): Agent | undefined {
 			|| '0.1'
 		)
 		apm = ElasticAPM.start({
-			serviceName: 'reclaim_attestor',
+			serviceName: 'lcore_attestor',
 			serviceVersion: '4.0.0',
 			transactionSampleRate: sampleRate,
 			instrumentIncomingHTTPRequests: true,
