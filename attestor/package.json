@@ -29,7 +29,6 @@
     "lint": "eslint ./ --ext .js,.ts,.jsx,.tsx",
     "lint:fix": "eslint ./ --fix --ext .js,.ts,.jsx,.tsx",
     "generate:proto": "sh ./src/scripts/generate-proto.sh",
-    "generate:contracts-data": "sh ./src/scripts/contract-data-gen.sh",
     "generate:provider-types": "npm run run:tsc -- src/scripts/generate-provider-types.ts",
     "create:claim": "npm run run:tsc -- src/scripts/generate-receipt.ts",
     "docker:build": "docker build -f attestor.dockerfile -t attestor-core:latest .",

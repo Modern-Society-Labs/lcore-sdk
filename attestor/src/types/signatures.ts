@@ -4,7 +4,7 @@ type Awaitable<T> = T | Promise<T>
 
 export type ServiceSignatureProvider = {
 	/**
-	 * Returns public key in compressed (compact) format used in Reclaim RPC calls
+	 * Returns public key in compressed (compact) format used in attestor RPC calls
 	 * @param privateKey corresponding private key in raw o hex form
 	 */
 	getPublicKey(privateKey: PrivateKey): Uint8Array

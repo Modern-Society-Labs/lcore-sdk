@@ -31,7 +31,7 @@ export class AttestorClient {
    * Check attestor health status
    */
   async health(): Promise<HealthStatus> {
-    const response = await this.fetch('/healthcheck')
+    const response = await this.fetch('/api/health')
     return response as HealthStatus
   }
 

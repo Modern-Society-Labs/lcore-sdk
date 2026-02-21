@@ -30,7 +30,6 @@ export {
 	hasRequiredRole,
 	requireSuperAdmin,
 	requireAdmin,
-	requireOperatorManager,
 	requireViewer,
 	requireAuthWithApiKey,
 } from './middleware.ts'

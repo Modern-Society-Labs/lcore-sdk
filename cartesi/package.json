@@ -1,5 +1,5 @@
 {
-  "name": "cartesi-sqlite-framework",
+  "name": "@localecore/cartesi-dapp",
   "version": "1.0.0",
   "description": "Generalized Cartesi SQLite Framework for Multi-Source Data Ingestion",
   "main": "dist/index.js",
@@ -30,7 +30,6 @@
     "ts-jest": "^29.1.2",
     "ts-node": "^10",
     "typescript": "^5",
-    "vitest": "^0.34"
   },
   "scripts": {
     "build": "run-s compile compile:lcore compile:rollup-server postbuild",
@@ -58,6 +57,11 @@
     "data-ingestion",
     "framework"
   ],
+  "author": "Modern Society Labs",
+  "bugs": {
+    "url": "https://github.com/Modern-Society-Labs/lcore-sdk/issues"
+  },
+  "homepage": "https://github.com/Modern-Society-Labs/lcore-sdk",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"

@@ -34,7 +34,7 @@ export function getApm(): Agent | undefined {
 		)
 		apm = ElasticAPM.start({
 			serviceName: 'lcore_attestor',
-			serviceVersion: '4.0.0',
+			serviceVersion: '5.0.0',
 			transactionSampleRate: sampleRate,
 			instrumentIncomingHTTPRequests: true,
 			usePathAsTransactionName: true,

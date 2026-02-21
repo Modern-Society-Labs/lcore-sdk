@@ -219,13 +219,10 @@ export async function updateApiKeyPermissions(
  */
 export const API_KEY_PERMISSIONS = {
 	// Read permissions
-	'read': 'Read public data (operators, stats)',
-	'read:operators': 'Read operator details',
-	'read:tasks': 'Read task history',
+	'read': 'Read public data',
 	'read:analytics': 'Read analytics data',
 
 	// Write permissions
-	'write:operators': 'Manage operator whitelist',
 	'write:config': 'Update system configuration',
 
 	// Admin permissions

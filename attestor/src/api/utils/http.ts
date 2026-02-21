@@ -112,7 +112,7 @@ export function parseQuery(url: string): Record<string, string> {
  * CORS headers for API routes
  */
 export function setCorsHeaders(res: ServerResponse, origin?: string): void {
-	const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['*']
+	const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || ['*']
 	const requestOrigin = origin || '*'
 
 	const allowOrigin = allowedOrigins.includes('*')

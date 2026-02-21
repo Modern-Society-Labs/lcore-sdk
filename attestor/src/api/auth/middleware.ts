@@ -349,7 +349,6 @@ function sendError(res: ServerResponse, status: number, message: string): void {
  */
 export const requireSuperAdmin = createAuthMiddleware({ requiredRole: 'super_admin' })
 export const requireAdmin = createAuthMiddleware({ requiredRole: 'admin' })
-export const requireOperatorManager = createAuthMiddleware({ requiredRole: 'operator_manager' })
 export const requireViewer = createAuthMiddleware({ requiredRole: 'viewer' })
 
 /**
