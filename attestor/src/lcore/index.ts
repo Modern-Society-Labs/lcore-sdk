@@ -38,6 +38,10 @@ export {
 	isInputEncryptionConfigured,
 	encryptInput,
 	encryptInputEnvelope,
+	// V1 data encryption
+	encryptDataForSubmission,
+	computeDataHash,
+	decryptDataSubmission,
 	type EncryptedOutput,
 	type DecryptionResult,
 	type DecryptionError,

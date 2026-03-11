@@ -39,8 +39,9 @@ interface IngestAttestationPayload {
   valid_from: number;
   valid_until?: number;
   tee_signature: string;
+  data_hash?: string; // sha256(canonical_json(all_data_values) + salt)
   buckets: Array<{ key: string; value: string }>;
-  data: Array<{ key: string; value: string; encryption_key_id: string }>; // value is base64 encoded
+  data: Array<{ key: string; value: string; encryption_key_id: string }>; // value is base64 encrypted blob
 }
 
 /**
@@ -82,6 +83,27 @@ export const handleIngestAttestation = async (
     };
   }
 
+  // V1: Enforce that data entries are actually encrypted (not 'none')
+  for (const d of (p.data || [])) {
+    if (!d.encryption_key_id || d.encryption_key_id === 'none') {
+      return {
+        status: 'reject',
+        response: {
+          error: 'Unencrypted data not allowed - encryption_key_id must not be "none"',
+          data_key: d.key,
+        },
+      };
+    }
+  }
+
+  // V1: Validate data_hash format if provided
+  if (p.data_hash && !/^[0-9a-f]{64}$/i.test(p.data_hash)) {
+    return {
+      status: 'reject',
+      response: { error: 'Invalid data_hash format - expected 64-character hex string (SHA-256)' },
+    };
+  }
+
   // Prepare attestation input
   const attestationInput: AttestationInput = {
     id: p.id,
@@ -94,6 +116,7 @@ export const handleIngestAttestation = async (
     valid_from: p.valid_from,
     valid_until: p.valid_until,
     tee_signature: p.tee_signature,
+    data_hash: p.data_hash,
     created_input: requestData.metadata.input_index,
   };
 

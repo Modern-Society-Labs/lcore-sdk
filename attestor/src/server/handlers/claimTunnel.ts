@@ -1,5 +1,6 @@
 import { MAX_CLAIM_TIMESTAMP_DIFF_S } from '#src/config/index.ts'
 import { discretizeClaimData, submitAttestationToLCore } from '#src/lcore/index.ts'
+import { encryptDataForSubmission } from '#src/lcore/encryption.ts'
 import { ClaimTunnelResponse } from '#src/proto/api.ts'
 import { getApm } from '#src/server/utils/apm.ts'
 import { assertTranscriptsMatch, assertValidClaimRequest } from '#src/server/utils/assert-valid-claim-request.ts'
@@ -131,6 +132,17 @@ export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 			// Convert claim signature to base64 for storage
 			const signatureBase64 = Buffer.from(res.signatures.claimSignature).toString('base64')
 
+			// V1: Encrypt data entries before submission
+			const encryptedParams = encryptDataForSubmission(res.claim.parameters || '')
+			const encryptedContext = encryptDataForSubmission(res.claim.context || '')
+
+			// Compute overall data hash from both entries
+			const allData = {
+				parameters: res.claim.parameters || '',
+				context: res.claim.context || '',
+			}
+			const overallEncrypted = encryptDataForSubmission(allData)
+
 			const lcoreResult = await submitAttestationToLCore({
 				id: res.claim.identifier,
 				attestationHash: res.claim.identifier,
@@ -139,15 +151,16 @@ export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 				flowType,
 				validFrom: res.claim.timestampS,
 				teeSignature: signatureBase64,
+				dataHash: overallEncrypted.data_hash,
 				buckets,
 				data: [{
 					key: 'parameters',
-					value: Buffer.from(res.claim.parameters || '').toString('base64'),
-					encryptionKeyId: 'none', // Not encrypted for now
+					value: encryptedParams.encrypted_data,
+					encryptionKeyId: encryptedParams.encryption_key_id,
 				}, {
 					key: 'context',
-					value: Buffer.from(res.claim.context || '').toString('base64'),
-					encryptionKeyId: 'none',
+					value: encryptedContext.encrypted_data,
+					encryptionKeyId: encryptedContext.encryption_key_id,
 				}],
 			}, res.signatures.attestorAddress)
 

@@ -272,6 +272,7 @@ export function buildCoinGeckoPriceAttestation(
     valid_from: Math.floor(Date.now() / 1000),
     valid_until: Math.floor(Date.now() / 1000) + 600, // 10 min validity for price data
     tee_signature: generateSignature(),
+    data_hash: generateHash().slice(2), // 64-char hex without 0x
     buckets: [
       { key: 'price_range_usd', value: priceRangeBucket },
       { key: 'price_change_24h', value: 'slight_up' },
@@ -280,22 +281,22 @@ export function buildCoinGeckoPriceAttestation(
       {
         key: 'cardanoPrice',
         value: Buffer.from(cardanoPrice.toString()).toString('base64'),
-        encryption_key_id: 'tee-key-1',
+        encryption_key_id: 'lcore_key_v1',
       },
       {
         key: 'solanaPrice',
         value: Buffer.from(solanaPrice.toString()).toString('base64'),
-        encryption_key_id: 'tee-key-1',
+        encryption_key_id: 'lcore_key_v1',
       },
       {
         key: 'timestamp',
         value: Buffer.from(Date.now().toString()).toString('base64'),
-        encryption_key_id: 'tee-key-1',
+        encryption_key_id: 'lcore_key_v1',
       },
       {
         key: 'source_url',
         value: Buffer.from('https://api.coingecko.com/api/v3/simple/price?ids=cardano,solana&vs_currencies=usd').toString('base64'),
-        encryption_key_id: 'tee-key-1',
+        encryption_key_id: 'lcore_key_v1',
       },
     ],
   };
@@ -337,6 +338,7 @@ export interface IngestAttestationPayload {
   valid_from: number;
   valid_until?: number;
   tee_signature: string;
+  data_hash?: string;
   buckets: Array<{ key: string; value: string }>;
   data: Array<{ key: string; value: string; encryption_key_id: string }>;
 }
@@ -355,12 +357,13 @@ export function buildAttestationPayload(
     valid_from: options.valid_from ?? Math.floor(Date.now() / 1000),
     valid_until: options.valid_until,
     tee_signature: options.tee_signature ?? generateSignature(),
+    data_hash: options.data_hash ?? generateHash().slice(2), // 64-char hex without 0x
     buckets: options.buckets ?? [
       { key: 'balance_range', value: '1K-10K' },
     ],
     data: options.data ?? [
-      { key: 'balance', value: Buffer.from('5000').toString('base64'), encryption_key_id: 'key-1' },
-      { key: 'address', value: Buffer.from(owner).toString('base64'), encryption_key_id: 'key-1' },
+      { key: 'balance', value: Buffer.from('5000').toString('base64'), encryption_key_id: 'lcore_key_v1' },
+      { key: 'address', value: Buffer.from(owner).toString('base64'), encryption_key_id: 'lcore_key_v1' },
     ],
   };
 }
@@ -460,10 +463,13 @@ export function assertRejected(result: AdvanceResult, expectedError?: string): v
     throw new Error(`Expected status 'reject', got '${result.status}'`);
   }
   if (expectedError) {
-    // Check notices first (handler errors return JSON with 'error' field)
-    const response = getResponse<{ error?: string }>(result);
+    // Check notices first (handler errors return JSON with 'error' or 'details' field)
+    const response = getResponse<{ error?: string; details?: string }>(result);
     if (response?.error?.includes(expectedError)) {
       return; // Found in JSON error field
+    }
+    if (response?.details?.includes(expectedError)) {
+      return; // Found in JSON details field
     }
 
     // Check reports for plain string messages (router-level rejections)

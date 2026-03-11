@@ -120,22 +120,22 @@ describe('E2E Integration: Complete Attestor-Cartesi Flow', () => {
           {
             key: 'exact_balance',
             value: Buffer.from('50000.123456').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'token_address',
             value: Buffer.from('0xdac17f958d2ee523a2206206994597c13d831ec7').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'block_number',
             value: Buffer.from('18500000').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'timestamp',
             value: Buffer.from(Date.now().toString()).toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
         ],
       });
@@ -302,7 +302,7 @@ describe('E2E Integration: Complete Attestor-Cartesi Flow', () => {
 
       // Verify encrypted values are base64
       const balanceData = response?.data.find(d => d.data_key === 'exact_balance');
-      expect(balanceData?.encryption_key_id).toBe('owner-key-1');
+      expect(balanceData?.encryption_key_id).toBe('lcore_key_v1');
 
       // Decode and verify (DApp would decrypt with owner's key)
       const decodedBalance = Buffer.from(
@@ -423,22 +423,22 @@ describe('E2E Integration: Complete Attestor-Cartesi Flow', () => {
           {
             key: 'exact_balance',
             value: Buffer.from('1500000.00').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'token_address',
             value: Buffer.from('0xdac17f958d2ee523a2206206994597c13d831ec7').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'block_number',
             value: Buffer.from('18600000').toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
           {
             key: 'timestamp',
             value: Buffer.from(Date.now().toString()).toString('base64'),
-            encryption_key_id: 'owner-key-1',
+            encryption_key_id: 'lcore_key_v1',
           },
         ],
       });

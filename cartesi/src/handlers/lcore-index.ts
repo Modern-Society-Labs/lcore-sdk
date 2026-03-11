@@ -52,6 +52,7 @@ export {
 // ============= Encryption Handlers =============
 export {
   handleSetEncryptionKey,
+  handleRotateEncryptionKey,
   handleInspectEncryptionConfig,
   handleInspectEncryptionStatus,
 } from './lcore-encryption';
@@ -120,6 +121,7 @@ import {
 
 import {
   handleSetEncryptionKey,
+  handleRotateEncryptionKey,
   handleInspectEncryptionConfig,
   handleInspectEncryptionStatus,
 } from './lcore-encryption';
@@ -164,6 +166,7 @@ export const lcoreRouteConfig: RouteConfig = {
 
     // Encryption management (for admins)
     set_encryption_key: handleSetEncryptionKey,
+    rotate_encryption_key: handleRotateEncryptionKey,
 
     // Device attestation (from IoT devices via did:key)
     device_attestation: handleDeviceAttestation,

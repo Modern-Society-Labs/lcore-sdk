@@ -12,7 +12,6 @@
 
 import { stringToHex } from 'viem';
 import { processOutputSync } from './utils/output';
-import { isEncryptedInput, decryptInput, isInputDecryptionConfigured } from './encryption';
 
 // ============= Types =============
 
@@ -201,25 +200,6 @@ export class Router {
         return 'reject';
       }
 
-      // Check if payload is encrypted and decrypt it
-      let wasEncrypted = false;
-      if (isEncryptedInput(payload)) {
-        wasEncrypted = true;
-        if (!isInputDecryptionConfigured()) {
-          await this.sendReport('Encrypted input received but LCORE_INPUT_PRIVATE_KEY not configured');
-          return 'reject';
-        }
-        try {
-          console.log('Decrypting encrypted input...');
-          payload = decryptInput(payload.payload);
-          console.log('Input decrypted successfully');
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          await this.sendReport(`Failed to decrypt input: ${msg}`);
-          return 'reject';
-        }
-      }
-
       // Validate string field lengths
       try {
         validateStringLengths(payload);
@@ -238,12 +218,6 @@ export class Router {
       const handler = this.advanceHandlers.get(action);
       if (!handler) {
         await this.sendReport(`Unknown action: ${action}`);
-        return 'reject';
-      }
-
-      // Enforce encryption for device_attestation (privacy is non-negotiable)
-      if (action === 'device_attestation' && !wasEncrypted) {
-        await this.sendReport('Plaintext submissions not allowed for device_attestation - inputs must be encrypted');
         return 'reject';
       }
 

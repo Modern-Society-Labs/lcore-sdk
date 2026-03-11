@@ -3,14 +3,12 @@
  *
  * Fraud-provable handler for IoT device attestation via did:key.
  *
- * SECURITY MODEL:
- * - All inputs MUST be encrypted (privacy before InputBox)
- * - All JWS signatures are verified HERE in Cartesi (fraud-provable)
- * - Anyone can re-run Cartesi and verify every signature was valid
- * - No trusted attestor needed for verification
- *
- * This enables lightweight device attestation for IoT sensors that sign their
- * own data with secp256k1 keys (did:key format).
+ * V1 SECURITY MODEL:
+ * - Node NEVER decrypts device data (no private key in Cartesi)
+ * - Attestor encrypts data + salt, submits encrypted blob + salted hash
+ * - JWS is verified over the salted hash (fraud-provable)
+ * - Only the attestor TEE can decrypt the data
+ * - Anyone can re-run Cartesi and verify JWS was valid over the hash
  */
 
 import {
@@ -19,48 +17,32 @@ import {
   InspectQuery,
 } from '../router';
 import { getDatabase } from '../db';
-import type { EncryptedOutput } from '../encryption';
-import { verifyJWS, isValidDIDKey } from '../crypto/jws';
+import { verifyJWSOverHash, isValidDIDKey } from '../crypto/jws';
 
 // ============= Types =============
 
 /**
- * Encrypted envelope from the attestor/relay.
+ * V1 device attestation payload.
+ * The node stores encrypted blobs + hashes without decrypting.
  */
-interface EncryptedDevicePayload {
-  encrypted: true;
-  payload: EncryptedOutput;
-}
-
-/**
- * Decrypted device attestation payload.
- * This is what's inside the encrypted envelope.
- */
-interface DecryptedDevicePayload {
+interface V1DevicePayload {
   action: 'device_attestation';
+  data_hash: string;           // hex sha256(canonical_json(data) + salt)
+  jws: string;                 // JWS over data_hash
+  encrypted_data: string;      // base64 encrypted blob (opaque to node)
   device_did: string;
-  data: Record<string, unknown>;
-  signature: string;  // JWS to verify (FRAUD-PROVABLE)
   timestamp: number;
-  source: string;
-}
-
-/**
- * Legacy plaintext payload (for backward compatibility during transition).
- * TODO: Remove after transition period.
- */
-interface LegacyDeviceAttestationPayload {
-  action: 'device_attestation';
-  device_did: string;
-  data: Record<string, unknown>;
-  timestamp: number;
-  source: string;
+  encryption_key_id: string;
+  source?: string;
 }
 
 export interface DeviceAttestation {
   id: number;
   device_did: string;
-  data: string;
+  data_hash: string;
+  encrypted_data: string;
+  jws: string;
+  encryption_key_id: string;
   timestamp: number;
   source: string | null;
   input_index: number;
@@ -70,28 +52,18 @@ export interface DeviceAttestation {
 // ============= Advance Handlers =============
 
 /**
- * Handle device attestation from IoT devices
+ * Handle device attestation from IoT devices (V1 format)
  *
- * ENCRYPTED PAYLOAD FORMAT (required):
- * {
- *   encrypted: true,
- *   payload: {
- *     version: 1,
- *     algorithm: 'nacl-box',
- *     nonce: '...',
- *     ciphertext: '...',
- *     publicKey: '...'
- *   }
- * }
- *
- * DECRYPTED CONTENTS:
+ * V1 PAYLOAD FORMAT:
  * {
  *   action: 'device_attestation',
- *   device_did: 'did:key:z...',  // secp256k1 public key
- *   data: { temperature: 23.4, humidity: 65 },  // sensor data
- *   signature: 'eyJhbGc...',  // JWS over data (verified here!)
- *   timestamp: 1705123456,  // unix timestamp
- *   source: 'relay'  // submission source
+ *   data_hash: '...',           // sha256(canonical_json(data) + salt)
+ *   jws: 'eyJhbGc...',         // JWS over data_hash (verified here!)
+ *   encrypted_data: '...',      // base64 encrypted blob (opaque to node)
+ *   device_did: 'did:key:z...', // secp256k1 public key
+ *   timestamp: 1705123456,
+ *   encryption_key_id: 'lcore_key_v1',
+ *   source: 'relay'
  * }
  */
 export const handleDeviceAttestation = async (
@@ -99,61 +71,81 @@ export const handleDeviceAttestation = async (
   payload: unknown
 ): Promise<{ status: RequestHandlerResult; response?: unknown }> => {
 
-  // Note: Router already handles decryption at router.ts:204-219
-  // The payload we receive here is already decrypted
-  const decrypted = payload as DecryptedDevicePayload;
+  const p = payload as V1DevicePayload;
 
   // Step 1: Validate required fields
-  if (!decrypted.device_did) {
+  if (!p.device_did) {
     return {
       status: 'reject',
       response: { error: 'Missing required field: device_did' },
     };
   }
 
-  if (!decrypted.data || typeof decrypted.data !== 'object') {
+  if (!p.data_hash) {
     return {
       status: 'reject',
-      response: { error: 'Missing required field: data (must be an object)' },
+      response: { error: 'Missing required field: data_hash' },
     };
   }
 
-  if (!decrypted.signature) {
+  if (!p.jws) {
     return {
       status: 'reject',
-      response: { error: 'Missing required field: signature (JWS required for verification)' },
+      response: { error: 'Missing required field: jws' },
     };
   }
 
-  if (typeof decrypted.timestamp !== 'number') {
+  if (!p.encrypted_data) {
+    return {
+      status: 'reject',
+      response: { error: 'Missing required field: encrypted_data' },
+    };
+  }
+
+  if (!p.encryption_key_id) {
+    return {
+      status: 'reject',
+      response: { error: 'Missing required field: encryption_key_id' },
+    };
+  }
+
+  if (typeof p.timestamp !== 'number') {
     return {
       status: 'reject',
       response: { error: 'Missing required field: timestamp (must be a number)' },
     };
   }
 
+  // Validate data_hash format (64-char hex = SHA-256)
+  if (!/^[0-9a-f]{64}$/i.test(p.data_hash)) {
+    return {
+      status: 'reject',
+      response: { error: 'Invalid data_hash format - expected 64-character hex string (SHA-256)' },
+    };
+  }
+
   // Validate did:key format
-  if (!isValidDIDKey(decrypted.device_did)) {
+  if (!isValidDIDKey(p.device_did)) {
     return {
       status: 'reject',
       response: { error: 'Invalid device_did format. Expected did:key:z... with secp256k1 key' },
     };
   }
 
-  // Step 3: Verify JWS signature (FRAUD-PROVABLE)
+  // Step 2: Verify JWS over hash (FRAUD-PROVABLE)
   // This is the key security property - verification happens in Cartesi
-  // Anyone can re-run Cartesi and verify this was done correctly
+  // Anyone can re-run Cartesi and verify the JWS was valid over the hash
   try {
-    const isValid = verifyJWS(
-      decrypted.signature,
-      decrypted.data,
-      decrypted.device_did
+    const isValid = verifyJWSOverHash(
+      p.jws,
+      p.data_hash,
+      p.device_did
     );
 
     if (!isValid) {
       return {
         status: 'reject',
-        response: { error: 'Invalid device signature - JWS verification failed' },
+        response: { error: 'Invalid device signature - JWS verification over hash failed' },
       };
     }
   } catch (e) {
@@ -166,19 +158,22 @@ export const handleDeviceAttestation = async (
     };
   }
 
-  // Step 4: Store the verified attestation
+  // Step 3: Store the verified attestation (encrypted blob, never decrypted)
   try {
     const db = getDatabase();
 
-    // Insert into device_attestations table
     db.run(
-      `INSERT INTO device_attestations (device_did, data, timestamp, source, input_index, created_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO device_attestations
+       (device_did, data_hash, encrypted_data, jws, encryption_key_id, timestamp, source, input_index, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       [
-        decrypted.device_did,
-        JSON.stringify(decrypted.data),
-        decrypted.timestamp,
-        decrypted.source || 'relay',
+        p.device_did,
+        p.data_hash,
+        p.encrypted_data,
+        p.jws,
+        p.encryption_key_id,
+        p.timestamp,
+        p.source || 'relay',
         requestData.metadata.input_index,
       ]
     );
@@ -192,10 +187,11 @@ export const handleDeviceAttestation = async (
       response: {
         success: true,
         id,
-        device_did: decrypted.device_did,
-        timestamp: decrypted.timestamp,
+        device_did: p.device_did,
+        data_hash: p.data_hash,
+        timestamp: p.timestamp,
         input_index: requestData.metadata.input_index,
-        verified: true,  // Indicates JWS was verified
+        verified: true,  // Indicates JWS over hash was verified
       },
     };
   } catch (error) {
@@ -213,6 +209,9 @@ export const handleDeviceAttestation = async (
 
 /**
  * Query device attestations by device DID
+ *
+ * Returns encrypted data blobs + hashes (node never decrypts).
+ * The attestor TEE proxy decrypts for authorized requesters.
  *
  * Query parameters:
  * - device_did: The device's did:key identifier (required)
@@ -234,7 +233,8 @@ export const handleInspectDeviceAttestations = async (
     const offsetNum = offset ? parseInt(offset, 10) : 0;
 
     const result = db.exec(
-      `SELECT id, device_did, data, timestamp, source, input_index, created_at
+      `SELECT id, device_did, data_hash, encrypted_data, jws, encryption_key_id,
+              timestamp, source, input_index, created_at
        FROM device_attestations
        WHERE device_did = ?
        ORDER BY timestamp DESC
@@ -244,14 +244,17 @@ export const handleInspectDeviceAttestations = async (
 
     const rows = result[0]?.values ?? [];
 
-    const attestations = rows.map((row) => ({
+    const attestations = rows.map((row: unknown[]) => ({
       id: row[0] as number,
       device_did: row[1] as string,
-      data: JSON.parse(row[2] as string),
-      timestamp: row[3] as number,
-      source: row[4] as string | null,
-      input_index: row[5] as number,
-      created_at: row[6] as string,
+      data_hash: row[2] as string,
+      encrypted_data: row[3] as string,
+      jws: row[4] as string,
+      encryption_key_id: row[5] as string,
+      timestamp: row[6] as number,
+      source: row[7] as string | null,
+      input_index: row[8] as number,
+      created_at: row[9] as string,
     }));
 
     return {
@@ -286,7 +289,8 @@ export const handleInspectDeviceLatest = async (
     const db = getDatabase();
 
     const result = db.exec(
-      `SELECT id, device_did, data, timestamp, source, input_index, created_at
+      `SELECT id, device_did, data_hash, encrypted_data, jws, encryption_key_id,
+              timestamp, source, input_index, created_at
        FROM device_attestations
        WHERE device_did = ?
        ORDER BY timestamp DESC
@@ -303,11 +307,14 @@ export const handleInspectDeviceLatest = async (
     return {
       id: row[0] as number,
       device_did: row[1] as string,
-      data: JSON.parse(row[2] as string),
-      timestamp: row[3] as number,
-      source: row[4] as string | null,
-      input_index: row[5] as number,
-      created_at: row[6] as string,
+      data_hash: row[2] as string,
+      encrypted_data: row[3] as string,
+      jws: row[4] as string,
+      encryption_key_id: row[5] as string,
+      timestamp: row[6] as number,
+      source: row[7] as string | null,
+      input_index: row[8] as number,
+      created_at: row[9] as string,
     };
   } catch (error) {
     return {
@@ -321,6 +328,7 @@ export const handleInspectDeviceLatest = async (
  * Get device attestation statistics
  *
  * Returns aggregate counts by device and overall totals.
+ * No PII - safe to return unencrypted.
  */
 export const handleInspectDeviceStats = async (
   _query: InspectQuery
@@ -345,7 +353,7 @@ export const handleInspectDeviceStats = async (
        LIMIT 10`
     );
 
-    const perDevice = (perDeviceResult[0]?.values ?? []).map((row) => ({
+    const perDevice = (perDeviceResult[0]?.values ?? []).map((row: unknown[]) => ({
       device_did: row[0] as string,
       count: row[1] as number,
     }));

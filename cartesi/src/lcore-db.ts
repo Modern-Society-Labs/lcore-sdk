@@ -31,6 +31,7 @@ export interface Attestation {
   status: string;
   freshness_score: number;
   superseded_by: string | null;
+  data_hash: string | null;
   created_input: number;
 }
 
@@ -95,6 +96,7 @@ export interface AttestationInput {
   valid_from: number;
   valid_until?: number;
   tee_signature: string;
+  data_hash?: string;
   created_input: number;
 }
 
@@ -165,6 +167,7 @@ export function initLCoreSchema(): void {
       status TEXT DEFAULT 'active',
       freshness_score INTEGER DEFAULT 100,
       superseded_by TEXT,
+      data_hash TEXT,
 
       created_input INTEGER NOT NULL
     );
@@ -263,11 +266,14 @@ export function initLCoreSchema(): void {
     -- ============= DEVICE ATTESTATIONS =============
 
     -- Direct device attestations from IoT sensors (via did:key)
-    -- This is a lightweight path that doesn't require provider schemas
+    -- V1: Node stores encrypted blobs + hashes, never decrypts
     CREATE TABLE IF NOT EXISTS device_attestations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       device_did TEXT NOT NULL,
-      data TEXT NOT NULL,
+      data_hash TEXT NOT NULL,
+      encrypted_data TEXT NOT NULL,
+      jws TEXT NOT NULL,
+      encryption_key_id TEXT NOT NULL,
       timestamp INTEGER NOT NULL,
       source TEXT,
       input_index INTEGER NOT NULL,
@@ -276,6 +282,7 @@ export function initLCoreSchema(): void {
 
     CREATE INDEX IF NOT EXISTS idx_device_attestations_did ON device_attestations(device_did);
     CREATE INDEX IF NOT EXISTS idx_device_attestations_timestamp ON device_attestations(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_device_attestations_hash ON device_attestations(data_hash);
 
     -- ============= IDENTITY ATTESTATIONS (zkIdentity) =============
 
@@ -327,8 +334,8 @@ export function createAttestation(
   db.run(
     `INSERT INTO attestations
      (id, attestation_hash, owner_address, domain, provider, flow_type,
-      attested_at_input, valid_from, valid_until, tee_signature, created_input)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      attested_at_input, valid_from, valid_until, tee_signature, data_hash, created_input)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.id,
       input.attestation_hash,
@@ -340,6 +347,7 @@ export function createAttestation(
       input.valid_from,
       input.valid_until ?? null,
       input.tee_signature,
+      input.data_hash ?? null,
       input.created_input,
     ]
   );
@@ -373,7 +381,7 @@ export function getAttestationById(id: string): Attestation | null {
   const result = db.exec(
     `SELECT id, attestation_hash, owner_address, domain, provider, flow_type,
             attested_at_input, valid_from, valid_until, tee_signature, status,
-            freshness_score, superseded_by, created_input
+            freshness_score, superseded_by, data_hash, created_input
      FROM attestations WHERE id = ?`,
     [id]
   );
@@ -392,7 +400,7 @@ export function getAttestationByHash(hash: string): Attestation | null {
   const result = db.exec(
     `SELECT id, attestation_hash, owner_address, domain, provider, flow_type,
             attested_at_input, valid_from, valid_until, tee_signature, status,
-            freshness_score, superseded_by, created_input
+            freshness_score, superseded_by, data_hash, created_input
      FROM attestations WHERE attestation_hash = ?`,
     [hash]
   );
@@ -419,7 +427,7 @@ export function getAttestationsByOwner(
   const db = getDatabase();
   let query = `SELECT id, attestation_hash, owner_address, domain, provider, flow_type,
                       attested_at_input, valid_from, valid_until, tee_signature, status,
-                      freshness_score, superseded_by, created_input
+                      freshness_score, superseded_by, data_hash, created_input
                FROM attestations WHERE owner_address = ?`;
   const params: (string | number)[] = [ownerAddress];
 
@@ -471,7 +479,7 @@ export function queryAttestationsByMultipleBuckets(
   let query = `SELECT DISTINCT a.id, a.attestation_hash, a.owner_address, a.domain,
                       a.provider, a.flow_type, a.attested_at_input, a.valid_from,
                       a.valid_until, a.tee_signature, a.status, a.freshness_score,
-                      a.superseded_by, a.created_input
+                      a.superseded_by, a.data_hash, a.created_input
                FROM attestations a`;
 
   const params: (string | number)[] = [];
@@ -1053,7 +1061,7 @@ export function queryAttestationsByBucket(options: {
     SELECT DISTINCT a.id, a.attestation_hash, a.owner_address, a.domain,
            a.provider, a.flow_type, a.attested_at_input, a.valid_from,
            a.valid_until, a.tee_signature, a.status, a.freshness_score,
-           a.superseded_by, a.created_input
+           a.superseded_by, a.data_hash, a.created_input
     FROM attestations a
     JOIN attestation_buckets b ON a.id = b.attestation_id
     WHERE a.domain = ?
@@ -1112,7 +1120,7 @@ export function queryAttestationsByDomain(options: {
   let query = `
     SELECT id, attestation_hash, owner_address, domain, provider, flow_type,
            attested_at_input, valid_from, valid_until, tee_signature, status,
-           freshness_score, superseded_by, created_input
+           freshness_score, superseded_by, data_hash, created_input
     FROM attestations
     WHERE domain = ?`;
 
@@ -1347,7 +1355,8 @@ function rowToAttestation(row: unknown[]): Attestation {
     status: row[10] as string,
     freshness_score: row[11] as number,
     superseded_by: row[12] as string | null,
-    created_input: row[13] as number,
+    data_hash: row[13] as string | null,
+    created_input: row[14] as number,
   };
 }
 

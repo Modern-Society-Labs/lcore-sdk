@@ -78,6 +78,7 @@ interface IngestAttestationInput {
 	validFrom: number
 	validUntil?: number
 	teeSignature: string
+	dataHash?: string
 	buckets: Array<{ key: string, value: string }>
 	data: Array<{ key: string, value: string, encryptionKeyId: string }>
 }
@@ -116,10 +117,11 @@ export async function submitAttestationToLCore(
 		valid_from: input.validFrom,
 		valid_until: input.validUntil,
 		tee_signature: input.teeSignature,
+		data_hash: input.dataHash,
 		buckets: input.buckets,
 		data: input.data.map(d => ({
 			key: d.key,
-			value: d.value, // Already base64 encoded
+			value: d.value, // V1: encrypted blob (base64)
 			encryption_key_id: d.encryptionKeyId,
 		})),
 	}

@@ -246,6 +246,101 @@ export function verifyJWSSafe(
 }
 
 /**
+ * Verify a JWS where the payload is a hash string (not a JSON object).
+ *
+ * V1 encryption format: the device/attestor signs a salted hash of the data
+ * rather than the data itself. The node verifies the JWS over the hash
+ * without needing to decrypt the data.
+ *
+ * This function is DETERMINISTIC - safe for Cartesi's fraud-proof verification.
+ *
+ * @param jws - The JWS compact serialization
+ * @param expectedHash - The expected hash string (64-char hex, SHA-256)
+ * @param did - The signer's did:key identifier
+ * @returns True if signature is valid
+ * @throws Error if verification fails (with reason)
+ */
+export function verifyJWSOverHash(
+  jws: string,
+  expectedHash: string,
+  did: string
+): boolean {
+  // Validate expectedHash is 64-char hex (32 bytes SHA-256)
+  if (!/^[0-9a-f]{64}$/i.test(expectedHash)) {
+    throw new Error('Invalid hash format - expected 64-character hex string (SHA-256)');
+  }
+
+  // Split JWS into parts
+  const parts = jws.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Invalid JWS format - expected 3 parts separated by dots');
+  }
+
+  const headerB64 = parts[0]!;
+  const payloadB64 = parts[1]!;
+  const signatureB64 = parts[2]!;
+
+  // Decode and verify header
+  const headerJson = base64urlDecode(headerB64);
+  const header = JSON.parse(headerJson);
+
+  if (header.alg !== 'ES256K') {
+    throw new Error(`Unsupported JWS algorithm: ${header.alg} (expected ES256K)`);
+  }
+
+  // Decode payload and compare to expected hash (string equality)
+  const payloadStr = base64urlDecode(payloadB64);
+
+  if (payloadStr !== expectedHash) {
+    throw new Error('JWS payload hash does not match expected hash');
+  }
+
+  // Parse public key from DID
+  const publicKey = parseDIDKey(did);
+
+  // Decode signature
+  const signature = base64urlDecodeBytes(signatureB64);
+
+  // Compute message hash: SHA256(header.payload)
+  const message = `${headerB64}.${payloadB64}`;
+  const messageBytes = new TextEncoder().encode(message);
+  const messageHash = sha256(messageBytes);
+
+  // Verify secp256k1 signature
+  const isValid = secp256k1.verify(signature, messageHash, publicKey);
+
+  if (!isValid) {
+    throw new Error('Invalid JWS signature - verification failed');
+  }
+
+  return true;
+}
+
+/**
+ * Verify a JWS over hash without throwing - returns a result object instead.
+ *
+ * @param jws - The JWS compact serialization
+ * @param expectedHash - The expected hash string (64-char hex, SHA-256)
+ * @param did - The signer's did:key identifier
+ * @returns Object with success status and optional error message
+ */
+export function verifyJWSOverHashSafe(
+  jws: string,
+  expectedHash: string,
+  did: string
+): { valid: boolean; error?: string } {
+  try {
+    verifyJWSOverHash(jws, expectedHash, did);
+    return { valid: true };
+  } catch (e) {
+    return {
+      valid: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/**
  * Validate a did:key format without parsing (quick check).
  */
 export function isValidDIDKey(did: string): boolean {

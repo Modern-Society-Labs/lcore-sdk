@@ -38,6 +38,11 @@ docs-content-lcore/
 # Internal security documentation
 SECURITY-ACCESS-CONTROL.md
 
+# Internal planning and pitch documents
+data-encryption-fix.md
+pensieve-protocol-pitch.docx
+pensieve-protocol-plan.md
+
 # Cartesi build artifacts
 .cartesi/
 .playwright-mcp/

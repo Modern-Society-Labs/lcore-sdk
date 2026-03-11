@@ -14,7 +14,7 @@ import createClient from 'openapi-fetch';
 import { components, paths } from './schema';
 import { initDatabase } from './db';
 import { createRouter, RouteConfig } from './router';
-import { initEncryption, initInputDecryption } from './encryption';
+import { initEncryption } from './encryption';
 import {
   // Entity handlers
   handleCreateEntity,
@@ -128,15 +128,6 @@ const main = async () => {
     console.log('Output encryption initialized');
   } else {
     console.warn('[LCORE] LCORE_ADMIN_PUBLIC_KEY not set - output encryption disabled');
-  }
-
-  // Input decryption (for device attestation privacy)
-  const inputPrivateKey = process.env.LCORE_INPUT_PRIVATE_KEY;
-  if (inputPrivateKey) {
-    initInputDecryption(inputPrivateKey);
-    console.log('Input decryption initialized');
-  } else {
-    console.warn('[LCORE] LCORE_INPUT_PRIVATE_KEY not set - input decryption disabled');
   }
 
   // Create router with all handlers

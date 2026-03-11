@@ -5,6 +5,7 @@
  *
  * ADVANCE HANDLERS:
  * - set_encryption_key: Set the admin encryption public key (admin only)
+ * - rotate_encryption_key: Rotate the encryption key (admin only)
  *
  * INSPECT HANDLERS:
  * - encryption_config: Get current encryption configuration
@@ -76,6 +77,73 @@ export async function handleSetEncryptionKey(
         message: isBootstrap
           ? 'Encryption key set during bootstrap'
           : 'Encryption key updated',
+      },
+    };
+  } catch (error) {
+    return {
+      status: 'reject',
+      response: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+/**
+ * Rotate the encryption key.
+ *
+ * Admin-only operation. Deprecates the current active key and sets a new one.
+ * Old encrypted data remains decryptable with the old key (attestor retains old keys).
+ *
+ * @param data - Advance request with payload containing:
+ *   - new_public_key: Base64-encoded 32-byte NaCl public key
+ *   - key_id: Optional identifier for the new key
+ */
+export async function handleRotateEncryptionKey(
+  data: AdvanceRequestData,
+  payload: unknown
+): Promise<{ status: 'accept' | 'reject'; response?: unknown }> {
+  const p = payload as {
+    action: string;
+    new_public_key: string;
+    key_id?: string;
+  };
+
+  // Validate payload
+  if (!p.new_public_key || typeof p.new_public_key !== 'string') {
+    return {
+      status: 'reject',
+      response: { error: 'new_public_key is required' },
+    };
+  }
+
+  // Check authorization - admin only (no bootstrap)
+  const sender = data.metadata.msg_sender.toLowerCase();
+  if (!isSchemaAdmin(sender)) {
+    return {
+      status: 'reject',
+      response: {
+        error: 'Not authorized to rotate encryption key - admin only',
+        sender,
+      },
+    };
+  }
+
+  // Get old key info before rotation
+  const oldConfig = getActiveEncryptionConfig();
+  const oldKeyId = oldConfig?.key_id ?? null;
+
+  try {
+    const config = setEncryptionKey(p.new_public_key, data.metadata.input_index, p.key_id);
+
+    return {
+      status: 'accept',
+      response: {
+        success: true,
+        old_key_id: oldKeyId,
+        new_key_id: config.key_id,
+        algorithm: config.algorithm,
+        message: 'Encryption key rotated successfully',
       },
     };
   } catch (error) {

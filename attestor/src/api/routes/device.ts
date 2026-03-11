@@ -18,7 +18,7 @@ import { parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
 import { isValidDIDKeyFormat } from '#src/api/services/did.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { ethers, Wallet } from 'ethers'
-import { encryptInputEnvelope, isInputEncryptionConfigured } from '#src/lcore/encryption.ts'
+import { encryptDataForSubmission, isInputEncryptionConfigured } from '#src/lcore/encryption.ts'
 
 // Reuse L{CORE} configuration
 const LCORE_RPC_URL = getEnvVariable('LCORE_RPC_URL') || ''
@@ -69,11 +69,15 @@ interface DeviceSubmission {
 }
 
 /**
- * Submit device attestation to L{CORE} Cartesi rollup
+ * Submit device attestation to L{CORE} Cartesi rollup (V1 format)
  *
- * IMPORTANT: This function does NOT verify the JWS signature.
- * Verification happens inside Cartesi (fraud-provable).
- * This relay only encrypts and forwards.
+ * V1: Encrypts data + salt, computes salted hash, builds submission
+ * with encrypted blob + hash + JWS. Node verifies JWS over hash
+ * without decrypting.
+ *
+ * NOTE: For MVP, the attestor re-signs the hash on behalf of the device
+ * (the device signed the full data, but V1 requires signing the hash).
+ * True device-side hash signing is a follow-up.
  */
 async function submitDeviceAttestation(
 	deviceDid: string,
@@ -93,7 +97,7 @@ async function submitDeviceAttestation(
 	if (!isInputEncryptionConfigured()) {
 		return {
 			success: false,
-			error: 'Input encryption not configured - LCORE_INPUT_PUBLIC_KEY required'
+			error: 'Input encryption not configured - LCORE_PUBLIC_KEY required'
 		}
 	}
 
@@ -101,19 +105,22 @@ async function submitDeviceAttestation(
 		const wallet = getWallet()
 		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
 
-		// Build payload WITH signature (Cartesi will verify)
+		// V1: Encrypt data and compute salted hash
+		const encrypted = encryptDataForSubmission(data)
+
+		// Build V1 payload (no outer encryption envelope)
 		const payload = {
 			action: 'device_attestation',
+			data_hash: encrypted.data_hash,
+			jws: signature, // Pass through for Cartesi to verify over hash
+			encrypted_data: encrypted.encrypted_data,
 			device_did: deviceDid,
-			data,
-			signature, // Pass through for Cartesi to verify (fraud-provable)
 			timestamp,
-			source: 'relay'
+			encryption_key_id: encrypted.encryption_key_id,
+			source: 'relay',
 		}
 
-		// ALWAYS encrypt - privacy before InputBox
-		const encryptedEnvelope = encryptInputEnvelope(payload)
-		const inputData = hexEncode(encryptedEnvelope)
+		const inputData = hexEncode(payload)
 
 		// Submit to InputBox contract
 		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)

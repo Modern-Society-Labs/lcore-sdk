@@ -77,16 +77,15 @@ export interface LCoreResponseWithProof<T = unknown> {
 let adminPrivateKey: Uint8Array | null = null
 
 /**
- * Initialize the decryption module with the admin private key.
+ * Initialize the decryption module with the private key.
+ * V1: reads LCORE_PRIVATE_KEY (falls back to LCORE_ADMIN_PRIVATE_KEY for migration).
  * This should be called once at startup.
- *
- * @throws Error if LCORE_ADMIN_PRIVATE_KEY is not set
  */
 export function initDecryption(): void {
-	const privateKeyBase64 = getEnvVariable('LCORE_ADMIN_PRIVATE_KEY')
+	const privateKeyBase64 = getEnvVariable('LCORE_PRIVATE_KEY') || getEnvVariable('LCORE_ADMIN_PRIVATE_KEY')
 
 	if(!privateKeyBase64) {
-		console.warn('[LCORE] LCORE_ADMIN_PRIVATE_KEY not set - decryption disabled')
+		console.warn('[LCORE] LCORE_PRIVATE_KEY not set - decryption disabled')
 		return
 	}
 
@@ -459,13 +458,13 @@ let inputPublicKey: Uint8Array | null = null
 
 /**
  * Initialize input encryption with the public key.
- * Call this at startup - reads from LCORE_INPUT_PUBLIC_KEY environment variable.
+ * V1: reads LCORE_PUBLIC_KEY (falls back to LCORE_INPUT_PUBLIC_KEY for migration).
  */
 export function initInputEncryption(): void {
-	const publicKeyBase64 = getEnvVariable('LCORE_INPUT_PUBLIC_KEY')
+	const publicKeyBase64 = getEnvVariable('LCORE_PUBLIC_KEY') || getEnvVariable('LCORE_INPUT_PUBLIC_KEY')
 
 	if(!publicKeyBase64) {
-		console.warn('[LCORE] LCORE_INPUT_PUBLIC_KEY not set - input encryption disabled')
+		console.warn('[LCORE] LCORE_PUBLIC_KEY not set - input encryption disabled')
 		return
 	}
 
@@ -544,6 +543,168 @@ export function encryptInputEnvelope(data: unknown): { encrypted: true; payload:
 	return {
 		encrypted: true,
 		payload: encryptInput(data),
+	}
+}
+
+// ============= V1 Data Encryption =============
+
+/**
+ * Compute a salted hash of data for V1 submissions.
+ *
+ * hash = sha256(canonical_json(data) + salt)
+ *
+ * The salt is included inside the encrypted blob so only the TEE can
+ * recover it — prevents brute-forcing bounded data values.
+ *
+ * @param data - The data to hash
+ * @param salt - 16-byte random salt
+ * @returns hex-encoded SHA-256 hash (64 chars)
+ */
+export function computeDataHash(data: unknown, salt: Uint8Array): string {
+	const canonical = typeof data === 'string' ? data : JSON.stringify(sortKeys(data))
+	const combined = canonical + uint8ArrayToBase64(salt)
+	const hash = utils.sha256(Buffer.from(combined))
+	// Remove 0x prefix from ethers sha256
+	return hash.startsWith('0x') ? hash.slice(2) : hash
+}
+
+/**
+ * Sort object keys recursively for canonical JSON.
+ * Simple implementation — RFC 8785 JCS is post-MVP.
+ */
+function sortKeys(obj: unknown): unknown {
+	if(obj === null || typeof obj !== 'object') {
+		return obj
+	}
+	if(Array.isArray(obj)) {
+		return obj.map(sortKeys)
+	}
+	const sorted: Record<string, unknown> = {}
+	for(const key of Object.keys(obj as Record<string, unknown>).sort()) {
+		sorted[key] = sortKeys((obj as Record<string, unknown>)[key])
+	}
+	return sorted
+}
+
+/**
+ * Encrypt data for V1 submission format.
+ *
+ * Generates a random salt, computes the salted hash, encrypts
+ * the data + salt together, and returns all components needed
+ * for a V1 submission.
+ *
+ * @param data - The plaintext data to encrypt
+ * @returns V1 encryption result with hash, encrypted blob, and metadata
+ */
+export function encryptDataForSubmission(data: unknown): {
+	data_hash: string
+	encrypted_data: string
+	encryption_key_id: string
+} {
+	if(!inputPublicKey) {
+		throw new Error('Input encryption not configured - LCORE_PUBLIC_KEY not set')
+	}
+
+	// Generate 16-byte random salt
+	const salt = nacl.randomBytes(16)
+
+	// Compute salted hash
+	const dataHash = computeDataHash(data, salt)
+
+	// Encrypt data + salt together
+	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })
+	const plaintextBytes = new TextEncoder().encode(plaintext)
+
+	// NaCl box with ephemeral keypair
+	const ephemeral = nacl.box.keyPair()
+	const nonce = nacl.randomBytes(nacl.box.nonceLength)
+
+	const ciphertext = nacl.box(
+		plaintextBytes,
+		nonce,
+		inputPublicKey,
+		ephemeral.secretKey
+	)
+
+	// Pack as a single base64 blob: nonce + ephemeralPubKey + ciphertext
+	const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
+	blob.set(nonce, 0)
+	blob.set(ephemeral.publicKey, nonce.length)
+	blob.set(ciphertext, nonce.length + ephemeral.publicKey.length)
+
+	return {
+		data_hash: dataHash,
+		encrypted_data: uint8ArrayToBase64(blob),
+		encryption_key_id: 'lcore_key_v1',
+	}
+}
+
+/**
+ * Decrypt a V1 packed blob (from encryptDataForSubmission).
+ *
+ * The blob format is: nonce (24 bytes) + ephemeralPubKey (32 bytes) + ciphertext
+ * packed as a single base64 string.
+ *
+ * @param encryptedBlob - Base64-encoded packed blob
+ * @returns Decrypted data and salt, or error
+ */
+export function decryptDataSubmission<T = unknown>(
+	encryptedBlob: string
+): DecryptionResult<{ data: T; salt: string }> | DecryptionError {
+	if(!adminPrivateKey) {
+		return {
+			success: false,
+			error: 'Decryption not configured - LCORE_PRIVATE_KEY not set',
+		}
+	}
+
+	try {
+		const blob = base64ToUint8Array(encryptedBlob)
+
+		// Unpack: nonce (24) + ephemeralPubKey (32) + ciphertext (rest)
+		const nonceLen = nacl.box.nonceLength // 24
+		const pubKeyLen = nacl.box.publicKeyLength // 32
+		const minLen = nonceLen + pubKeyLen + 1 // at least 1 byte ciphertext
+
+		if(blob.length < minLen) {
+			return {
+				success: false,
+				error: `Invalid blob length: expected at least ${minLen} bytes, got ${blob.length}`,
+			}
+		}
+
+		const nonce = blob.slice(0, nonceLen)
+		const ephemeralPublicKey = blob.slice(nonceLen, nonceLen + pubKeyLen)
+		const ciphertext = blob.slice(nonceLen + pubKeyLen)
+
+		// Decrypt
+		const decrypted = nacl.box.open(
+			ciphertext,
+			nonce,
+			ephemeralPublicKey,
+			adminPrivateKey
+		)
+
+		if(!decrypted) {
+			return {
+				success: false,
+				error: 'Decryption failed - invalid ciphertext or key mismatch',
+			}
+		}
+
+		// Parse JSON — expects { data, salt }
+		const plaintext = new TextDecoder().decode(decrypted)
+		const parsed = JSON.parse(plaintext) as { data: T; salt: string }
+
+		return {
+			success: true,
+			data: parsed,
+		}
+	} catch(e) {
+		return {
+			success: false,
+			error: e instanceof Error ? e.message : String(e),
+		}
 	}
 }
 
