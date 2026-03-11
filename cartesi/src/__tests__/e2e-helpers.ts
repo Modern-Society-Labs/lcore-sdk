@@ -487,6 +487,31 @@ export function assertRejected(result: AdvanceResult, expectedError?: string): v
   }
 }
 
+// ============= Embedding Commitment Helpers =============
+
+export interface SubmitEmbeddingCommitmentPayload {
+  action: 'submit_embedding_commitment';
+  attested_input_ref: string;
+  model_id: string;
+  embedding_hash: string;
+  nonce: string;
+  commitment: string;
+}
+
+export function buildEmbeddingCommitmentPayload(
+  attestedInputRef: string,
+  options: Partial<Omit<SubmitEmbeddingCommitmentPayload, 'action' | 'attested_input_ref'>> = {}
+): SubmitEmbeddingCommitmentPayload {
+  return {
+    action: 'submit_embedding_commitment',
+    attested_input_ref: attestedInputRef,
+    model_id: options.model_id ?? 'text-embedding-3-large',
+    embedding_hash: options.embedding_hash ?? generateHash().slice(2),
+    nonce: options.nonce ?? generateHash().slice(2),
+    commitment: options.commitment ?? generateHash().slice(2),
+  };
+}
+
 // ============= Setup Helpers =============
 
 /**

@@ -74,6 +74,15 @@ export {
   handleInspectIdentityStats,
 } from './lcore-identity';
 
+// ============= Embedding Commitment Handlers =============
+export {
+  handleSubmitEmbeddingCommitment,
+  handleInspectEmbeddingCommitment,
+  handleInspectEmbeddingCommitmentsByRef,
+  handleInspectEmbeddingCommitmentsByModel,
+  handleInspectEmbeddingCommitmentStats,
+} from './lcore-embedding';
+
 // ============= Route Configuration =============
 
 import { RouteConfig } from '../router';
@@ -141,6 +150,14 @@ import {
   handleInspectIdentityStats,
 } from './lcore-identity';
 
+import {
+  handleSubmitEmbeddingCommitment,
+  handleInspectEmbeddingCommitment,
+  handleInspectEmbeddingCommitmentsByRef,
+  handleInspectEmbeddingCommitmentsByModel,
+  handleInspectEmbeddingCommitmentStats,
+} from './lcore-embedding';
+
 /**
  * L{CORE} SDK Route Configuration
  *
@@ -173,6 +190,9 @@ export const lcoreRouteConfig: RouteConfig = {
 
     // Identity attestation (zkIdentity - privacy-preserving KYC)
     identity_attestation: handleIdentityAttestation,
+
+    // Embedding commitments (from attestor TEE)
+    submit_embedding_commitment: handleSubmitEmbeddingCommitment,
   },
   inspect: {
     // Attestation queries
@@ -220,6 +240,12 @@ export const lcoreRouteConfig: RouteConfig = {
     identity_history: handleInspectIdentityHistory,
     identity_by_country: handleInspectIdentityByCountry,
     identity_stats: handleInspectIdentityStats,
+
+    // Embedding commitment queries
+    embedding_commitment: handleInspectEmbeddingCommitment,
+    embedding_commitments_by_ref: handleInspectEmbeddingCommitmentsByRef,
+    embedding_commitments_by_model: handleInspectEmbeddingCommitmentsByModel,
+    embedding_commitment_stats: handleInspectEmbeddingCommitmentStats,
   },
 };
 

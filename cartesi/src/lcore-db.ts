@@ -310,6 +310,28 @@ export function initLCoreSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_identity_provider ON identity_attestations(provider);
     CREATE INDEX IF NOT EXISTS idx_identity_country ON identity_attestations(country_code);
     CREATE INDEX IF NOT EXISTS idx_identity_expiry ON identity_attestations(expires_at);
+
+    -- ============= EMBEDDING COMMITMENTS =============
+
+    -- Fraud-provable commitments binding attestations to embedding outputs
+    -- Attestor TEE computes: commitment = sha256(attested_input_ref || model_id || embedding || nonce)
+    -- Node stores the commitment metadata WITHOUT the raw embedding
+    CREATE TABLE IF NOT EXISTS embedding_commitments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      attested_input_ref TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      embedding_hash TEXT NOT NULL,
+      nonce TEXT NOT NULL,
+      commitment TEXT NOT NULL,
+      submitted_by TEXT NOT NULL,
+      input_index INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(attested_input_ref, model_id, nonce)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_embedding_commitment_ref ON embedding_commitments(attested_input_ref);
+    CREATE INDEX IF NOT EXISTS idx_embedding_commitment_model ON embedding_commitments(model_id);
+    CREATE INDEX IF NOT EXISTS idx_embedding_commitment_hash ON embedding_commitments(commitment);
   `);
 
   // Initialize encryption schema (separate table)
