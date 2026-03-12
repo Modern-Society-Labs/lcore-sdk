@@ -708,6 +708,82 @@ export function decryptDataSubmission<T = unknown>(
 	}
 }
 
+// ============= Re-encryption for Inspect Proxy =============
+
+/**
+ * Validate a base64-encoded NaCl public key (32 bytes).
+ *
+ * @param publicKeyBase64 - Base64-encoded public key to validate
+ * @returns true if valid 32-byte NaCl public key
+ */
+export function validateNaClPublicKey(publicKeyBase64: string): boolean {
+	try {
+		const bytes = base64ToUint8Array(publicKeyBase64)
+		return bytes.length === nacl.box.publicKeyLength
+	} catch {
+		return false
+	}
+}
+
+/**
+ * Re-encrypt data for a specific requester's public key.
+ *
+ * Used by the inspect proxy: decrypts V1 packed blobs with the admin
+ * private key, then re-encrypts the plaintext for the requester using
+ * NaCl box with an ephemeral keypair.
+ *
+ * @param encryptedBlob - Base64-encoded V1 packed blob
+ * @param requesterPublicKeyBase64 - Requester's NaCl public key (base64)
+ * @returns Re-encrypted packed blob (base64) or error
+ */
+export function reEncryptForRequester(
+	encryptedBlob: string,
+	requesterPublicKeyBase64: string
+): { success: true; encrypted_data: string } | DecryptionError {
+	// Decrypt with admin key
+	const decrypted = decryptDataSubmission(encryptedBlob)
+	if (!decrypted.success) {
+		return decrypted
+	}
+
+	// Re-encrypt for requester
+	try {
+		const requesterPubKey = base64ToUint8Array(requesterPublicKeyBase64)
+		if (requesterPubKey.length !== nacl.box.publicKeyLength) {
+			return { success: false, error: 'Invalid requester public key length' }
+		}
+
+		const plaintext = JSON.stringify(decrypted.data)
+		const plaintextBytes = new TextEncoder().encode(plaintext)
+
+		const ephemeral = nacl.box.keyPair()
+		const nonce = nacl.randomBytes(nacl.box.nonceLength)
+
+		const ciphertext = nacl.box(
+			plaintextBytes,
+			nonce,
+			requesterPubKey,
+			ephemeral.secretKey
+		)
+
+		// Pack as V1 blob: nonce + ephemeralPubKey + ciphertext
+		const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
+		blob.set(nonce, 0)
+		blob.set(ephemeral.publicKey, nonce.length)
+		blob.set(ciphertext, nonce.length + ephemeral.publicKey.length)
+
+		return {
+			success: true,
+			encrypted_data: uint8ArrayToBase64(blob),
+		}
+	} catch (e) {
+		return {
+			success: false,
+			error: e instanceof Error ? e.message : String(e),
+		}
+	}
+}
+
 // ============= Helper Functions =============
 
 /**
@@ -720,6 +796,11 @@ function base64ToUint8Array(base64: string): Uint8Array {
 /**
  * Convert a Uint8Array to Base64 string.
  */
-function uint8ArrayToBase64(bytes: Uint8Array): string {
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
 	return Buffer.from(bytes).toString('base64')
 }
+
+/**
+ * Convert a Base64 string to Uint8Array (exported for inspect proxy).
+ */
+export { base64ToUint8Array as decodeBase64 }

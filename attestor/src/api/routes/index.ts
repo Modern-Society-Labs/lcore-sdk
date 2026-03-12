@@ -10,6 +10,7 @@ import { handleApiKeysRoute } from '#src/api/routes/api-keys.ts'
 import { handleAuditRoute } from '#src/api/routes/audit.ts'
 import { handleAuthRoute } from '#src/api/routes/auth.ts'
 import { handleDeviceRoute } from '#src/api/routes/device.ts'
+import { handleInspectProxyRoute } from '#src/api/routes/inspect-proxy.ts'
 import { handleKycRoute } from '#src/api/routes/kyc.ts'
 import { handleLCoreRoute } from '#src/api/routes/lcore.ts'
 import { handleCorsPrelight, sendError, setCorsHeaders } from '#src/api/utils/http.ts'
@@ -55,6 +56,10 @@ export async function handleApiRequest(
 
 		if(path.startsWith('/api/audit')) {
 			return await handleAuditRoute(req, res, path)
+		}
+
+		if(path.startsWith('/api/inspect')) {
+			return await handleInspectProxyRoute(req, res, path)
 		}
 
 		if(path.startsWith('/api/lcore')) {
