@@ -12,6 +12,7 @@
  * See docs/LCORE-ARCHITECTURE.md for full privacy model documentation.
  */
 
+import canonicalize from 'canonicalize'
 import { utils } from 'ethers'
 import nacl from 'tweetnacl'
 
@@ -225,8 +226,8 @@ async function createDecryptionProof(
 	encryptedPayload: EncryptedOutput,
 	plaintextJson: string
 ): Promise<DecryptionProof> {
-	// Hash the encrypted payload (canonical JSON)
-	const ciphertextJson = JSON.stringify(encryptedPayload)
+	// Hash the encrypted payload (RFC 8785 canonical JSON)
+	const ciphertextJson = (canonicalize as unknown as (v: unknown) => string)(encryptedPayload)
 	const ciphertextHash = utils.sha256(Buffer.from(ciphertextJson))
 
 	// Hash the plaintext
@@ -561,29 +562,11 @@ export function encryptInputEnvelope(data: unknown): { encrypted: true; payload:
  * @returns hex-encoded SHA-256 hash (64 chars)
  */
 export function computeDataHash(data: unknown, salt: Uint8Array): string {
-	const canonical = typeof data === 'string' ? data : JSON.stringify(sortKeys(data))
+	const canonical = typeof data === 'string' ? data : (canonicalize as unknown as (v: unknown) => string)(data)
 	const combined = canonical + uint8ArrayToBase64(salt)
 	const hash = utils.sha256(Buffer.from(combined))
 	// Remove 0x prefix from ethers sha256
 	return hash.startsWith('0x') ? hash.slice(2) : hash
-}
-
-/**
- * Sort object keys recursively for canonical JSON.
- * Simple implementation — RFC 8785 JCS is post-MVP.
- */
-function sortKeys(obj: unknown): unknown {
-	if(obj === null || typeof obj !== 'object') {
-		return obj
-	}
-	if(Array.isArray(obj)) {
-		return obj.map(sortKeys)
-	}
-	const sorted: Record<string, unknown> = {}
-	for(const key of Object.keys(obj as Record<string, unknown>).sort()) {
-		sorted[key] = sortKeys((obj as Record<string, unknown>)[key])
-	}
-	return sorted
 }
 
 /**

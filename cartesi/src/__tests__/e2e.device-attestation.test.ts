@@ -23,6 +23,7 @@ import {
   assertRejected,
   bootstrapAdmin,
 } from './e2e-helpers';
+import canonicalize from 'canonicalize';
 import nacl from 'tweetnacl';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
@@ -62,23 +63,10 @@ function publicKeyToDIDKey(publicKey: Uint8Array): string {
 // ============= V1 Helpers =============
 
 /**
- * Sort object keys recursively for canonical JSON
- */
-function sortKeys(obj: unknown): unknown {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sortKeys);
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
-    sorted[key] = sortKeys((obj as Record<string, unknown>)[key]);
-  }
-  return sorted;
-}
-
-/**
- * Compute salted hash (matches attestor's computeDataHash)
+ * Compute salted hash using RFC 8785 JCS (matches attestor's computeDataHash)
  */
 function computeDataHash(data: unknown, salt: Uint8Array): string {
-  const canonical = typeof data === 'string' ? data : JSON.stringify(sortKeys(data));
+  const canonical = typeof data === 'string' ? data : canonicalize(data);
   const saltBase64 = Buffer.from(salt).toString('base64');
   const combined = canonical + saltBase64;
   const hash = sha256(new TextEncoder().encode(combined));
@@ -843,10 +831,11 @@ describe('E2E: Device Attestation V1 Format', () => {
       const newKeypair = nacl.box.keyPair();
       const newPublicKeyBase64 = Buffer.from(newKeypair.publicKey).toString('base64');
 
+      const uniqueKeyId = `lcore_key_dev_${Date.now()}`;
       const rotatePayload = {
         action: 'rotate_encryption_key',
         new_public_key: newPublicKeyBase64,
-        key_id: 'lcore_key_v2',
+        key_id: uniqueKeyId,
       };
 
       const result = await submitAdvance(rotatePayload, TEST_ADDRESSES.admin);
@@ -859,7 +848,7 @@ describe('E2E: Device Attestation V1 Format', () => {
       }>(result);
 
       expect(response?.success).toBe(true);
-      expect(response?.new_key_id).toBe('lcore_key_v2');
+      expect(response?.new_key_id).toBe(uniqueKeyId);
     });
 
     it('should reject key rotation from non-admin', async () => {
@@ -882,7 +871,7 @@ describe('E2E: Device Attestation V1 Format', () => {
 
       // Submit with new key ID (assuming rotation happened above)
       const payload = buildV1DeviceAttestation(deviceDid, { temp: 22 }, privateKey);
-      payload.encryption_key_id = 'lcore_key_v2';
+      payload.encryption_key_id = `lcore_key_post_rotation_${Date.now()}`;
 
       const result = await submitAdvance(payload, TEST_ADDRESSES.owner);
       assertAccepted(result);
