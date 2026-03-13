@@ -155,7 +155,9 @@ export function getOutputMode(): OutputMode {
   if (envValue === 'raw' || envValue === 'custom' || envValue === 'encrypted') {
     return envValue;
   }
-  return 'encrypted'; // Default to encrypted for privacy
+  // V1: data privacy comes from encrypted blobs, not encrypted responses.
+  // The attestor handles decrypted reads; the node returns raw metadata.
+  return 'raw';
 }
 
 // ============= Rate Limiting Configuration =============

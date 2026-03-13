@@ -5,8 +5,8 @@
  * This is the gated access layer that dApps use to control who can
  * decrypt private attestation data.
  *
- * PRIVACY NOTE: Inspect handlers that return grant details or attestation data
- * use the encryption module to encrypt sensitive outputs.
+ * V1: Data privacy comes from encrypted blobs, not encrypted responses.
+ * Output encryption is handled by processOutputSync based on LCORE_OUTPUT_MODE.
  */
 
 import {
@@ -25,7 +25,6 @@ import {
   getAttestationData,
   AccessGrantInput,
 } from '../lcore-db';
-import { createResponse } from '../encryption';
 
 // ============= Advance Handlers =============
 
@@ -283,8 +282,7 @@ export const handleInspectGrant = async (
     },
   };
 
-  // Encrypt - grant details contain entity relationships
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 /**
@@ -318,8 +316,7 @@ export const handleInspectGrantsByAttestation = async (
     })),
   };
 
-  // Encrypt - grant details contain entity relationships
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 /**
@@ -356,8 +353,7 @@ export const handleInspectGrantsByGrantee = async (
     })),
   };
 
-  // Encrypt - grant details contain entity relationships
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 /**
@@ -428,8 +424,7 @@ export const handleInspectAttestationData = async (
     data: dataForTransport,
   };
 
-  // Encrypt - attestation data is PII
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 // ============= Helpers =============

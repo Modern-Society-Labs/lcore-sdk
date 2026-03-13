@@ -11,6 +11,20 @@ import { customOutputHandler } from '../custom/output-handler';
 import type { AdvanceRequestData, InspectRequestData } from '../router';
 
 /**
+ * Check if data is already wrapped by createResponse().
+ * Handlers that call createResponse() return { encrypted: boolean, ... }.
+ * processOutput/processOutputSync must not re-encrypt these.
+ */
+function isAlreadyWrapped(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'encrypted' in data &&
+    typeof (data as Record<string, unknown>).encrypted === 'boolean'
+  );
+}
+
+/**
  * Process output based on configured OUTPUT_MODE.
  *
  * @param data - The raw data to be returned
@@ -21,6 +35,11 @@ export async function processOutput(
   data: unknown,
   request?: AdvanceRequestData | InspectRequestData
 ): Promise<unknown> {
+  // Handler already called createResponse() — don't re-encrypt
+  if (isAlreadyWrapped(data)) {
+    return data;
+  }
+
   const config = getConfig();
 
   switch (config.outputMode) {
@@ -62,6 +81,11 @@ export async function processOutput(
  * For custom mode, use processOutput() instead.
  */
 export function processOutputSync(data: unknown): unknown {
+  // Handler already called createResponse() — don't re-encrypt
+  if (isAlreadyWrapped(data)) {
+    return data;
+  }
+
   const config = getConfig();
 
   switch (config.outputMode) {

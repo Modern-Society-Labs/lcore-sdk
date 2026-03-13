@@ -3,9 +3,8 @@
  *
  * Handles attestation ingestion, status updates, and revocation.
  *
- * PRIVACY NOTE: Inspect handlers that return PII (owner_address, attestation details)
- * use the encryption module to encrypt sensitive outputs. Only aggregate data
- * (counts) is returned unencrypted.
+ * V1: Data privacy comes from encrypted blobs, not encrypted responses.
+ * Output encryption is handled by processOutputSync based on LCORE_OUTPUT_MODE.
  */
 
 import {
@@ -25,7 +24,6 @@ import {
   BucketInput,
   DataInput,
 } from '../lcore-db';
-import { createResponse, isEncryptionConfigured } from '../encryption';
 
 // ============= Advance Handlers =============
 
@@ -350,15 +348,11 @@ export const handleInspectAttestation = async (
     })),
   };
 
-  // Encrypt if configured (this data contains PII)
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 /**
  * Query attestations by owner
- *
- * PRIVACY: This returns PII (owner_address, attestation details).
- * Output is encrypted if encryption is configured.
  */
 export const handleInspectAttestationsByOwner = async (
   query: InspectQuery
@@ -401,8 +395,7 @@ export const handleInspectAttestationsByOwner = async (
     attestations: results,
   };
 
-  // Encrypt if configured (this data contains PII)
-  return createResponse(responseData, true);
+  return responseData;
 };
 
 // ============= Helpers =============
