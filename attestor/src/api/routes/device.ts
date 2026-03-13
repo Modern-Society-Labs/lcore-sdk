@@ -10,6 +10,12 @@
  * - Inputs are encrypted before hitting the InputBox (privacy)
  * - Anyone can re-run Cartesi and verify every signature was valid
  *
+ * BATCHING:
+ * - Submissions are buffered and flushed as batch_device_attestation
+ * - Mitigates metadata activity pattern leaks (timing, cadence)
+ * - Configurable via LCORE_BATCH_FLUSH_INTERVAL and LCORE_BATCH_MAX_SIZE
+ * - Set LCORE_BATCH_ENABLED=0 to disable batching (direct submission)
+ *
  * POST /api/device/submit - Submit signed device data
  */
 
@@ -19,12 +25,14 @@ import { isValidDIDKeyFormat } from '#src/api/services/did.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { ethers, Wallet } from 'ethers'
 import { encryptDataForSubmission, isInputEncryptionConfigured } from '#src/lcore/encryption.ts'
+import { SubmissionBatcher, type BatchableSubmission, type BatchFlushResult } from '#src/submission-batcher.ts'
 
 // Reuse L{CORE} configuration
 const LCORE_RPC_URL = getEnvVariable('LCORE_RPC_URL') || ''
 const LCORE_DAPP_ADDRESS = getEnvVariable('LCORE_DAPP_ADDRESS') || ''
 const LCORE_INPUTBOX_ADDRESS = getEnvVariable('LCORE_INPUTBOX_ADDRESS') || '0x59b22D57D4f067708AB0c00552767405926dc768'
 const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
+const BATCH_ENABLED = getEnvVariable('LCORE_BATCH_ENABLED') !== '0'
 
 // InputBox ABI (minimal)
 const INPUT_BOX_ABI = [
@@ -68,18 +76,96 @@ interface DeviceSubmission {
 	timestamp: number
 }
 
+// ============= Batch Flush Function =============
+
 /**
- * Submit device attestation to L{CORE} Cartesi rollup (V1 format)
- *
- * V1: Encrypts data + salt, computes salted hash, builds submission
- * with encrypted blob + hash + JWS. Node verifies JWS over hash
- * without decrypting.
- *
- * NOTE: For MVP, the attestor re-signs the hash on behalf of the device
- * (the device signed the full data, but V1 requires signing the hash).
- * True device-side hash signing is a follow-up.
+ * Flush a batch of submissions to the InputBox as a single transaction.
  */
-async function submitDeviceAttestation(
+async function flushBatch(submissions: BatchableSubmission[]): Promise<BatchFlushResult> {
+	try {
+		const wallet = getWallet()
+		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
+
+		const batchPayload = {
+			action: 'batch_device_attestation',
+			submissions,
+		}
+
+		const inputData = hexEncode(batchPayload)
+		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
+		const receipt = await tx.wait()
+
+		if (!receipt) {
+			return { success: false, count: submissions.length, error: 'Transaction failed - no receipt' }
+		}
+
+		return {
+			success: true,
+			count: submissions.length,
+			txHash: tx.hash,
+			blockNumber: receipt.blockNumber,
+		}
+	} catch (error) {
+		return {
+			success: false,
+			count: submissions.length,
+			error: error instanceof Error ? error.message : String(error),
+		}
+	}
+}
+
+// Singleton batcher instance
+let _batcher: SubmissionBatcher | null = null
+
+function getBatcher(): SubmissionBatcher {
+	if (!_batcher) {
+		_batcher = new SubmissionBatcher(flushBatch)
+		_batcher.start()
+	}
+	return _batcher
+}
+
+/**
+ * Stop the batcher and flush remaining items. Call on shutdown.
+ */
+export async function stopBatcher(): Promise<BatchFlushResult | null> {
+	if (_batcher) {
+		const result = await _batcher.stop()
+		_batcher = null
+		return result
+	}
+	return null
+}
+
+// ============= Submission Logic =============
+
+/**
+ * Build a V1 submission from device data.
+ */
+function buildV1Submission(
+	deviceDid: string,
+	data: Record<string, unknown>,
+	signature: string,
+	timestamp: number
+): BatchableSubmission {
+	const encrypted = encryptDataForSubmission(data)
+
+	return {
+		action: 'device_attestation',
+		data_hash: encrypted.data_hash,
+		jws: signature,
+		encrypted_data: encrypted.encrypted_data,
+		device_did: deviceDid,
+		timestamp,
+		encryption_key_id: encrypted.encryption_key_id,
+		source: 'relay',
+	}
+}
+
+/**
+ * Submit device attestation directly to InputBox (non-batched).
+ */
+async function submitDeviceAttestationDirect(
 	deviceDid: string,
 	data: Record<string, unknown>,
 	signature: string,
@@ -93,7 +179,6 @@ async function submitDeviceAttestation(
 		return { success: false, error: 'LCORE_DAPP_ADDRESS is required' }
 	}
 
-	// Input encryption is REQUIRED for privacy
 	if (!isInputEncryptionConfigured()) {
 		return {
 			success: false,
@@ -105,24 +190,9 @@ async function submitDeviceAttestation(
 		const wallet = getWallet()
 		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
 
-		// V1: Encrypt data and compute salted hash
-		const encrypted = encryptDataForSubmission(data)
-
-		// Build V1 payload (no outer encryption envelope)
-		const payload = {
-			action: 'device_attestation',
-			data_hash: encrypted.data_hash,
-			jws: signature, // Pass through for Cartesi to verify over hash
-			encrypted_data: encrypted.encrypted_data,
-			device_did: deviceDid,
-			timestamp,
-			encryption_key_id: encrypted.encryption_key_id,
-			source: 'relay',
-		}
-
+		const payload = buildV1Submission(deviceDid, data, signature, timestamp)
 		const inputData = hexEncode(payload)
 
-		// Submit to InputBox contract
 		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
 		const receipt = await tx.wait()
 
@@ -141,6 +211,53 @@ async function submitDeviceAttestation(
 		}
 	}
 }
+
+/**
+ * Submit device attestation via the batcher (batched mode).
+ * Returns immediately with a buffered receipt.
+ */
+async function submitDeviceAttestationBatched(
+	deviceDid: string,
+	data: Record<string, unknown>,
+	signature: string,
+	timestamp: number
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+	if (!LCORE_ENABLED) {
+		return { success: false, error: 'L{CORE} is not enabled' }
+	}
+
+	if (!LCORE_DAPP_ADDRESS) {
+		return { success: false, error: 'LCORE_DAPP_ADDRESS is required' }
+	}
+
+	if (!isInputEncryptionConfigured()) {
+		return {
+			success: false,
+			error: 'Input encryption not configured - LCORE_PUBLIC_KEY required'
+		}
+	}
+
+	const submission = buildV1Submission(deviceDid, data, signature, timestamp)
+	const batcher = getBatcher()
+	const flushResult = await batcher.add(submission)
+
+	// If max-size triggered an immediate flush, report it
+	if (flushResult && !flushResult.success) {
+		return { success: false, error: flushResult.error }
+	}
+
+	return {
+		success: true,
+		data: {
+			batched: true,
+			buffer_size: batcher.size,
+			data_hash: submission.data_hash,
+			...(flushResult ? { txHash: flushResult.txHash, blockNumber: flushResult.blockNumber } : {}),
+		}
+	}
+}
+
+// ============= HTTP Handlers =============
 
 /**
  * POST /api/device/submit
@@ -190,11 +307,15 @@ async function handleDeviceSubmit(
 		return sendError(res, 400, 'Invalid did:key format. Expected did:key:z... with secp256k1 key')
 	}
 
-	// Submit to Cartesi (with signature for Cartesi to verify)
-	const result = await submitDeviceAttestation(
+	// Submit via batcher or directly based on configuration
+	const submitFn = BATCH_ENABLED
+		? submitDeviceAttestationBatched
+		: submitDeviceAttestationDirect
+
+	const result = await submitFn(
 		body.did,
 		body.payload,
-		body.signature, // Pass through - Cartesi verifies
+		body.signature,
 		body.timestamp
 	)
 

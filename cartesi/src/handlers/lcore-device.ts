@@ -205,6 +205,68 @@ export const handleDeviceAttestation = async (
   }
 };
 
+// ============= Batch Handler =============
+
+/**
+ * Handle batched device attestations from the attestor.
+ *
+ * Unpacks a submissions array and processes each one through the
+ * standard device attestation logic. All-or-nothing: if any submission
+ * fails validation, the entire batch is rejected.
+ *
+ * PAYLOAD FORMAT:
+ * {
+ *   action: 'batch_device_attestation',
+ *   submissions: V1DevicePayload[]
+ * }
+ */
+export const handleBatchDeviceAttestation = async (
+  requestData: AdvanceRequestData,
+  payload: unknown
+): Promise<{ status: RequestHandlerResult; response?: unknown }> => {
+
+  const p = payload as { action: string; submissions: unknown[] };
+
+  if (!Array.isArray(p.submissions) || p.submissions.length === 0) {
+    return {
+      status: 'reject',
+      response: { error: 'submissions must be a non-empty array' },
+    };
+  }
+
+  const results: Array<{ index: number; id: number; device_did: string; data_hash: string }> = [];
+
+  for (let i = 0; i < p.submissions.length; i++) {
+    const sub = p.submissions[i] as V1DevicePayload;
+
+    // Delegate to the single-item handler logic
+    const result = await handleDeviceAttestation(requestData, sub);
+
+    if (result.status === 'reject') {
+      return {
+        status: 'reject',
+        response: {
+          error: `Submission ${i} failed`,
+          index: i,
+          details: result.response,
+        },
+      };
+    }
+
+    const resp = result.response as { id: number; device_did: string; data_hash: string };
+    results.push({ index: i, id: resp.id, device_did: resp.device_did, data_hash: resp.data_hash });
+  }
+
+  return {
+    status: 'accept',
+    response: {
+      success: true,
+      batch_size: results.length,
+      results,
+    },
+  };
+};
+
 // ============= Inspect Handlers =============
 
 /**

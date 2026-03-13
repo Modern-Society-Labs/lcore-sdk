@@ -60,6 +60,7 @@ export {
 // ============= Device Attestation Handlers =============
 export {
   handleDeviceAttestation,
+  handleBatchDeviceAttestation,
   handleInspectDeviceAttestations,
   handleInspectDeviceLatest,
   handleInspectDeviceStats,
@@ -137,6 +138,7 @@ import {
 
 import {
   handleDeviceAttestation,
+  handleBatchDeviceAttestation,
   handleInspectDeviceAttestations,
   handleInspectDeviceLatest,
   handleInspectDeviceStats,
@@ -187,6 +189,7 @@ export const lcoreRouteConfig: RouteConfig = {
 
     // Device attestation (from IoT devices via did:key)
     device_attestation: handleDeviceAttestation,
+    batch_device_attestation: handleBatchDeviceAttestation,
 
     // Identity attestation (zkIdentity - privacy-preserving KYC)
     identity_attestation: handleIdentityAttestation,

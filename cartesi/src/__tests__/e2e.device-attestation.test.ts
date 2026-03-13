@@ -877,4 +877,155 @@ describe('E2E: Device Attestation V1 Format', () => {
       assertAccepted(result);
     });
   });
+
+  // ============= Batch Submission Tests =============
+
+  describe('Batch Device Attestation', () => {
+    it('should accept a batch of valid submissions', async () => {
+      const submissions = [];
+      for (let i = 0; i < 3; i++) {
+        const { privateKey, publicKey } = generateDeviceKeypair();
+        const deviceDid = publicKeyToDIDKey(publicKey);
+        const sub = buildV1DeviceAttestation(deviceDid, { sensor: i, temp: 20 + i }, privateKey);
+        submissions.push(sub);
+      }
+
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions,
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertAccepted(result);
+
+      const response = getResponse<{
+        success: boolean;
+        batch_size: number;
+        results: Array<{ index: number; id: number; device_did: string; data_hash: string }>;
+      }>(result);
+
+      expect(response?.success).toBe(true);
+      expect(response?.batch_size).toBe(3);
+      expect(response?.results).toHaveLength(3);
+      expect(response?.results[0].index).toBe(0);
+      expect(response?.results[1].index).toBe(1);
+      expect(response?.results[2].index).toBe(2);
+    });
+
+    it('should reject entire batch if one submission has invalid JWS', async () => {
+      const { privateKey: pk1, publicKey: pub1 } = generateDeviceKeypair();
+      const did1 = publicKeyToDIDKey(pub1);
+      const valid = buildV1DeviceAttestation(did1, { ok: true }, pk1);
+
+      // Create a submission with a JWS signed by a different key
+      const { publicKey: pub2 } = generateDeviceKeypair();
+      const { privateKey: wrongPk } = generateDeviceKeypair();
+      const did2 = publicKeyToDIDKey(pub2);
+      const invalid = buildV1DeviceAttestation(did2, { bad: true }, wrongPk);
+      // Override device_did to mismatch the signing key
+      invalid.device_did = did2;
+
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions: [valid, invalid],
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertRejected(result);
+
+      const response = getResponse<{ error: string; index: number }>(result);
+      expect(response?.index).toBe(1);
+    });
+
+    it('should reject batch with empty submissions array', async () => {
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions: [],
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertRejected(result);
+
+      const response = getResponse<{ error: string }>(result);
+      expect(response?.error).toContain('non-empty array');
+    });
+
+    it('should reject batch with missing submissions field', async () => {
+      const batchPayload = {
+        action: 'batch_device_attestation',
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertRejected(result);
+    });
+
+    it('should store all attestations from a batch and query them', async () => {
+      const { privateKey, publicKey } = generateDeviceKeypair();
+      const deviceDid = publicKeyToDIDKey(publicKey);
+
+      const submissions = [];
+      for (let i = 0; i < 5; i++) {
+        submissions.push(
+          buildV1DeviceAttestation(deviceDid, { reading: i * 10 }, privateKey)
+        );
+      }
+
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions,
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertAccepted(result);
+
+      // Query attestations for this device
+      const inspectResult = await submitInspect('device_attestations', {
+        device_did: deviceDid,
+      });
+
+      const inspectResponse = getResponse<{
+        device_did: string;
+        count: number;
+        attestations: Array<{ data_hash: string }>;
+      }>(inspectResult);
+
+      expect(inspectResponse?.count).toBe(5);
+      expect(inspectResponse?.attestations).toHaveLength(5);
+    });
+
+    it('should handle single-item batch', async () => {
+      const { privateKey, publicKey } = generateDeviceKeypair();
+      const deviceDid = publicKeyToDIDKey(publicKey);
+      const sub = buildV1DeviceAttestation(deviceDid, { single: true }, privateKey);
+
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions: [sub],
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertAccepted(result);
+
+      const response = getResponse<{ batch_size: number }>(result);
+      expect(response?.batch_size).toBe(1);
+    });
+
+    it('should reject batch where a submission has malformed data_hash', async () => {
+      const { privateKey, publicKey } = generateDeviceKeypair();
+      const deviceDid = publicKeyToDIDKey(publicKey);
+      const sub = buildV1DeviceAttestation(deviceDid, { x: 1 }, privateKey);
+      sub.data_hash = 'not-a-valid-hash';
+
+      const batchPayload = {
+        action: 'batch_device_attestation',
+        submissions: [sub],
+      };
+
+      const result = await submitAdvance(batchPayload, TEST_ADDRESSES.owner);
+      assertRejected(result);
+
+      const response = getResponse<{ index: number }>(result);
+      expect(response?.index).toBe(0);
+    });
+  });
 });
