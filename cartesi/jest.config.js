@@ -9,7 +9,14 @@ module.exports = {
     '^.+\\.tsx?$': ['ts-jest', {
       useESM: false,
     }],
+    // Transform ESM-only @noble packages for Jest CJS compatibility
+    'node_modules/@noble/.+\\.js$': ['ts-jest', {
+      useESM: false,
+    }],
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!@noble/)',
+  ],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },

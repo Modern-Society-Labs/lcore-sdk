@@ -18,6 +18,7 @@ const require = createRequire(
 	new URL('../../attestor/package.json', import.meta.url)
 )
 const nacl = require('tweetnacl') as typeof import('tweetnacl')
+const { xchacha20poly1305 } = require('@noble/ciphers/chacha.js') as { xchacha20poly1305: typeof import('@noble/ciphers/chacha.js').xchacha20poly1305 }
 
 // Set env vars BEFORE importing the encryption module.
 // generics.ts runs getOperatorPrivateKey() at import time.
@@ -71,19 +72,20 @@ function decryptPackedBlob(
 	recipientSecretKey: Uint8Array
 ): unknown {
 	const bytes = Buffer.from(blob, 'base64')
-	const nonce = bytes.subarray(0, nacl.box.nonceLength)
-	const ephPubKey = bytes.subarray(nacl.box.nonceLength, nacl.box.nonceLength + nacl.box.publicKeyLength)
-	const ciphertext = bytes.subarray(nacl.box.nonceLength + nacl.box.publicKeyLength)
+	const nonce = new Uint8Array(bytes.subarray(0, 24))
+	const ephPubKey = new Uint8Array(bytes.subarray(24, 56))
+	const ciphertext = new Uint8Array(bytes.subarray(56))
 
-	const decrypted = nacl.box.open(
-		new Uint8Array(ciphertext),
-		new Uint8Array(nonce),
-		new Uint8Array(ephPubKey),
-		recipientSecretKey
-	)
-
-	assert.ok(decrypted, 'Failed to decrypt packed blob')
-	return JSON.parse(new TextDecoder().decode(decrypted))
+	// Try XChaCha20-Poly1305 first (current cipher), fall back to NaCl box
+	try {
+		const sharedSecret = nacl.scalarMult(recipientSecretKey, ephPubKey)
+		const decrypted = xchacha20poly1305(sharedSecret, nonce).decrypt(ciphertext)
+		return JSON.parse(new TextDecoder().decode(decrypted))
+	} catch {
+		const decrypted = nacl.box.open(ciphertext, nonce, ephPubKey, recipientSecretKey)
+		assert.ok(decrypted, 'Failed to decrypt packed blob')
+		return JSON.parse(new TextDecoder().decode(decrypted))
+	}
 }
 
 // ============= Tests =============
@@ -194,18 +196,19 @@ describe('reEncryptForRequester', () => {
 		// Try decrypting with admin key — should fail
 		const reEncrypted = (result as { encrypted_data: string }).encrypted_data
 		const bytes = Buffer.from(reEncrypted, 'base64')
-		const nonce = bytes.subarray(0, nacl.box.nonceLength)
-		const ephPubKey = bytes.subarray(nacl.box.nonceLength, nacl.box.nonceLength + nacl.box.publicKeyLength)
-		const ciphertext = bytes.subarray(nacl.box.nonceLength + nacl.box.publicKeyLength)
+		const nonce = new Uint8Array(bytes.subarray(0, 24))
+		const ephPubKey = new Uint8Array(bytes.subarray(24, 56))
+		const ciphertext = new Uint8Array(bytes.subarray(56))
 
-		const decrypted = nacl.box.open(
-			new Uint8Array(ciphertext),
-			new Uint8Array(nonce),
-			new Uint8Array(ephPubKey),
-			adminKeypair.secretKey
-		)
+		let adminDecryptFailed = false
+		try {
+			const sharedSecret = nacl.scalarMult(adminKeypair.secretKey, ephPubKey)
+			xchacha20poly1305(sharedSecret, nonce).decrypt(ciphertext)
+		} catch {
+			adminDecryptFailed = true
+		}
 
-		assert.equal(decrypted, null, 'Admin should not be able to decrypt re-encrypted blob')
+		assert.ok(adminDecryptFailed, 'Admin should not be able to decrypt re-encrypted blob')
 	})
 })
 

@@ -13,6 +13,7 @@
  */
 
 import canonicalize from 'canonicalize'
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js'
 import { utils } from 'ethers'
 import nacl from 'tweetnacl'
 
@@ -22,9 +23,11 @@ import { SelectedServiceSignatureType } from '#src/utils/signatures/index.ts'
 
 // ============= Types =============
 
+export type CipherAlgorithm = 'nacl-box' | 'xchacha20-poly1305'
+
 export interface EncryptedOutput {
 	version: 1
-	algorithm: 'nacl-box'
+	algorithm: CipherAlgorithm
 	nonce: string // Base64-encoded 24-byte nonce
 	ciphertext: string // Base64-encoded encrypted data
 	publicKey: string // Base64-encoded ephemeral public key
@@ -151,7 +154,7 @@ export function decryptOutput<T = unknown>(
 	}
 
 	// Validate algorithm
-	if(encrypted.algorithm !== 'nacl-box') {
+	if(encrypted.algorithm !== 'nacl-box' && encrypted.algorithm !== 'xchacha20-poly1305') {
 		return {
 			success: false,
 			error: `Unsupported algorithm: ${encrypted.algorithm}`,
@@ -164,28 +167,36 @@ export function decryptOutput<T = unknown>(
 		const ciphertext = base64ToUint8Array(encrypted.ciphertext)
 		const ephemeralPublicKey = base64ToUint8Array(encrypted.publicKey)
 
-		// Validate lengths
-		if(nonce.length !== nacl.box.nonceLength) {
+		// Validate lengths (both algorithms use 24-byte nonce and 32-byte keys)
+		if(nonce.length !== 24) {
 			return {
 				success: false,
-				error: `Invalid nonce length: expected ${nacl.box.nonceLength}, got ${nonce.length}`,
+				error: `Invalid nonce length: expected 24, got ${nonce.length}`,
 			}
 		}
 
-		if(ephemeralPublicKey.length !== nacl.box.publicKeyLength) {
+		if(ephemeralPublicKey.length !== 32) {
 			return {
 				success: false,
-				error: `Invalid public key length: expected ${nacl.box.publicKeyLength}, got ${ephemeralPublicKey.length}`,
+				error: `Invalid public key length: expected 32, got ${ephemeralPublicKey.length}`,
 			}
 		}
 
-		// Decrypt
-		const decrypted = nacl.box.open(
-			ciphertext,
-			nonce,
-			ephemeralPublicKey,
-			adminPrivateKey
-		)
+		let decrypted: Uint8Array | null
+
+		if(encrypted.algorithm === 'xchacha20-poly1305') {
+			// X25519 ECDH shared secret + XChaCha20-Poly1305 AEAD
+			const sharedSecret = nacl.scalarMult(adminPrivateKey, ephemeralPublicKey)
+			decrypted = xchacha20poly1305(sharedSecret, nonce).decrypt(ciphertext)
+		} else {
+			// Legacy NaCl box (X25519-XSalsa20-Poly1305)
+			decrypted = nacl.box.open(
+				ciphertext,
+				nonce,
+				ephemeralPublicKey,
+				adminPrivateKey
+			)
+		}
 
 		if(!decrypted) {
 			return {
@@ -496,7 +507,8 @@ export function isInputEncryptionConfigured(): boolean {
  * This encrypts device attestation payloads before they are submitted
  * to the Cartesi InputBox, ensuring the data is not visible on-chain.
  *
- * Uses NaCl box with an ephemeral keypair for forward secrecy.
+ * Uses X25519 ECDH + XChaCha20-Poly1305 AEAD with an ephemeral keypair
+ * for forward secrecy.
  *
  * @param data - Data to encrypt (will be JSON.stringified)
  * @returns EncryptedOutput object ready for submission
@@ -514,20 +526,18 @@ export function encryptInput(data: unknown): EncryptedOutput {
 	// Generate ephemeral keypair for this message (forward secrecy)
 	const ephemeral = nacl.box.keyPair()
 
-	// Generate random nonce
-	const nonce = nacl.randomBytes(nacl.box.nonceLength)
+	// Generate random 24-byte nonce (safe with random nonces for XChaCha20)
+	const nonce = nacl.randomBytes(24)
 
-	// Encrypt using NaCl box
-	const ciphertext = nacl.box(
-		plaintextBytes,
-		nonce,
-		inputPublicKey,
-		ephemeral.secretKey
-	)
+	// X25519 ECDH shared secret
+	const sharedSecret = nacl.scalarMult(ephemeral.secretKey, inputPublicKey)
+
+	// Encrypt using XChaCha20-Poly1305 AEAD
+	const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes)
 
 	return {
 		version: 1,
-		algorithm: 'nacl-box',
+		algorithm: 'xchacha20-poly1305',
 		nonce: uint8ArrayToBase64(nonce),
 		ciphertext: uint8ArrayToBase64(ciphertext),
 		publicKey: uint8ArrayToBase64(ephemeral.publicKey),
@@ -598,18 +608,14 @@ export function encryptDataForSubmission(data: unknown): {
 	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })
 	const plaintextBytes = new TextEncoder().encode(plaintext)
 
-	// NaCl box with ephemeral keypair
+	// X25519 ECDH + XChaCha20-Poly1305 with ephemeral keypair
 	const ephemeral = nacl.box.keyPair()
-	const nonce = nacl.randomBytes(nacl.box.nonceLength)
+	const nonce = nacl.randomBytes(24)
 
-	const ciphertext = nacl.box(
-		plaintextBytes,
-		nonce,
-		inputPublicKey,
-		ephemeral.secretKey
-	)
+	const sharedSecret = nacl.scalarMult(ephemeral.secretKey, inputPublicKey)
+	const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes)
 
-	// Pack as a single base64 blob: nonce + ephemeralPubKey + ciphertext
+	// Pack as a single base64 blob: nonce (24) + ephemeralPubKey (32) + ciphertext+tag
 	const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
 	blob.set(nonce, 0)
 	blob.set(ephemeral.publicKey, nonce.length)
@@ -660,13 +666,21 @@ export function decryptDataSubmission<T = unknown>(
 		const ephemeralPublicKey = blob.slice(nonceLen, nonceLen + pubKeyLen)
 		const ciphertext = blob.slice(nonceLen + pubKeyLen)
 
-		// Decrypt
-		const decrypted = nacl.box.open(
-			ciphertext,
-			nonce,
-			ephemeralPublicKey,
-			adminPrivateKey
-		)
+		// Try XChaCha20-Poly1305 first (current cipher), fall back to NaCl box (legacy)
+		let decrypted: Uint8Array | null = null
+
+		try {
+			const sharedSecret = nacl.scalarMult(adminPrivateKey, ephemeralPublicKey)
+			decrypted = xchacha20poly1305(sharedSecret, nonce).decrypt(ciphertext)
+		} catch {
+			// XChaCha20 failed, try legacy NaCl box
+			decrypted = nacl.box.open(
+				ciphertext,
+				nonce,
+				ephemeralPublicKey,
+				adminPrivateKey
+			)
+		}
 
 		if(!decrypted) {
 			return {
@@ -729,10 +743,10 @@ export function reEncryptForRequester(
 		return decrypted
 	}
 
-	// Re-encrypt for requester
+	// Re-encrypt for requester using XChaCha20-Poly1305
 	try {
 		const requesterPubKey = base64ToUint8Array(requesterPublicKeyBase64)
-		if (requesterPubKey.length !== nacl.box.publicKeyLength) {
+		if (requesterPubKey.length !== 32) {
 			return { success: false, error: 'Invalid requester public key length' }
 		}
 
@@ -740,16 +754,12 @@ export function reEncryptForRequester(
 		const plaintextBytes = new TextEncoder().encode(plaintext)
 
 		const ephemeral = nacl.box.keyPair()
-		const nonce = nacl.randomBytes(nacl.box.nonceLength)
+		const nonce = nacl.randomBytes(24)
 
-		const ciphertext = nacl.box(
-			plaintextBytes,
-			nonce,
-			requesterPubKey,
-			ephemeral.secretKey
-		)
+		const sharedSecret = nacl.scalarMult(ephemeral.secretKey, requesterPubKey)
+		const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes)
 
-		// Pack as V1 blob: nonce + ephemeralPubKey + ciphertext
+		// Pack as blob: nonce (24) + ephemeralPubKey (32) + ciphertext+tag
 		const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
 		blob.set(nonce, 0)
 		blob.set(ephemeral.publicKey, nonce.length)

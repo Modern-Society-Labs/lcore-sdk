@@ -2,7 +2,7 @@
  * L{CORE} Encryption Module
  *
  * Provides encryption utilities for protecting sensitive outputs from the Cartesi DApp.
- * Uses NaCl box (X25519-XSalsa20-Poly1305) for authenticated asymmetric encryption.
+ * Uses X25519 ECDH + XChaCha20-Poly1305 AEAD for authenticated asymmetric encryption.
  *
  * ARCHITECTURE:
  * - Admin public key is stored in the database (set at deployment)
@@ -13,14 +13,17 @@
  * See docs/LCORE-ARCHITECTURE.md for full privacy model documentation.
  */
 
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import nacl from 'tweetnacl';
 import { getDatabase } from './db';
 
 // ============= Types =============
 
+export type CipherAlgorithm = 'nacl-box' | 'xchacha20-poly1305';
+
 export interface EncryptedOutput {
   version: 1;
-  algorithm: 'nacl-box';
+  algorithm: CipherAlgorithm;
   nonce: string;        // Base64-encoded 24-byte nonce
   ciphertext: string;   // Base64-encoded encrypted data
   publicKey: string;    // Base64-encoded ephemeral public key
@@ -48,7 +51,7 @@ export function initEncryptionSchema(): void {
     CREATE TABLE IF NOT EXISTS encryption_config (
       key_id TEXT PRIMARY KEY,
       public_key TEXT NOT NULL,
-      algorithm TEXT NOT NULL DEFAULT 'nacl-box',
+      algorithm TEXT NOT NULL DEFAULT 'xchacha20-poly1305',
       created_at INTEGER NOT NULL,
       status TEXT DEFAULT 'active'
     );
@@ -123,7 +126,7 @@ export function setEncryptionKey(
   db.run(
     `INSERT INTO encryption_config (key_id, public_key, algorithm, created_at, status)
      VALUES (?, ?, ?, ?, ?)`,
-    [resolvedKeyId, publicKeyBase64, 'nacl-box', inputIndex, 'active']
+    [resolvedKeyId, publicKeyBase64, 'xchacha20-poly1305', inputIndex, 'active']
   );
 
   console.log(`Encryption key set: ${resolvedKeyId}`);
@@ -183,8 +186,8 @@ function getAdminPublicKey(): Uint8Array | null {
 /**
  * Encrypt sensitive data for output.
  *
- * Uses NaCl box with an ephemeral keypair for forward secrecy.
- * The encrypted output includes the ephemeral public key needed for decryption.
+ * Uses X25519 ECDH + XChaCha20-Poly1305 AEAD with an ephemeral keypair
+ * for forward secrecy.
  *
  * @param data - Data to encrypt (will be JSON.stringified if not already a string)
  * @returns EncryptedOutput object ready for serialization
@@ -203,20 +206,18 @@ export function encryptOutput(data: unknown): EncryptedOutput {
   // Generate ephemeral keypair for this message (forward secrecy)
   const ephemeral = nacl.box.keyPair();
 
-  // Generate random nonce
-  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  // Generate random 24-byte nonce (safe with random nonces for XChaCha20)
+  const nonce = nacl.randomBytes(24);
 
-  // Encrypt using NaCl box
-  const ciphertext = nacl.box(
-    plaintextBytes,
-    nonce,
-    adminPublicKey,
-    ephemeral.secretKey
-  );
+  // X25519 ECDH shared secret
+  const sharedSecret = nacl.scalarMult(ephemeral.secretKey, adminPublicKey);
+
+  // Encrypt using XChaCha20-Poly1305 AEAD
+  const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes);
 
   return {
     version: 1,
-    algorithm: 'nacl-box',
+    algorithm: 'xchacha20-poly1305',
     nonce: uint8ArrayToBase64(nonce),
     ciphertext: uint8ArrayToBase64(ciphertext),
     publicKey: uint8ArrayToBase64(ephemeral.publicKey),
@@ -290,7 +291,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 // ============= Determinism Note =============
 
 /**
- * IMPORTANT: NaCl's randomBytes() uses crypto.getRandomValues() which is
+ * IMPORTANT: randomBytes() uses crypto.getRandomValues() which is
  * NON-DETERMINISTIC by design. This is acceptable for encryption because:
  *
  * 1. The nonce is included in the output (deterministic given the output)

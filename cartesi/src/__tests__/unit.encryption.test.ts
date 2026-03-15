@@ -107,7 +107,7 @@ describe('Encryption Module', () => {
       const encrypted = encryptOutput(data);
 
       expect(encrypted.version).toBe(1);
-      expect(encrypted.algorithm).toBe('nacl-box');
+      expect(encrypted.algorithm).toBe('xchacha20-poly1305');
       expect(typeof encrypted.nonce).toBe('string');
       expect(typeof encrypted.ciphertext).toBe('string');
       expect(typeof encrypted.publicKey).toBe('string');
