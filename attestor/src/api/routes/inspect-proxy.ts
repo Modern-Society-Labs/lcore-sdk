@@ -307,10 +307,12 @@ async function handleDeviceLatest(
 		return sendJson(res, result.data)
 	}
 
-	// Re-encrypt for requester
+	// Re-encrypt for requester (pass encryption_key_id + device_did for V2 dispatch)
 	const reEncResult = reEncryptForRequester(
 		result.data.encrypted_data,
-		body.requester_public_key
+		body.requester_public_key,
+		result.data.encryption_key_id,
+		result.data.device_did
 	)
 
 	if (!reEncResult.success) {
@@ -451,7 +453,12 @@ function reEncryptAttestations(
 	requesterPublicKey: string
 ): Array<DeviceAttestationRecord & { re_encrypted_for?: string; re_encryption_error?: string }> {
 	return attestations.map(att => {
-		const reEnc = reEncryptForRequester(att.encrypted_data, requesterPublicKey)
+		const reEnc = reEncryptForRequester(
+			att.encrypted_data,
+			requesterPublicKey,
+			att.encryption_key_id,
+			att.device_did
+		)
 
 		if (!reEnc.success) {
 			return {

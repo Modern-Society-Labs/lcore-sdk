@@ -24,7 +24,7 @@ import { parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
 import { isValidDIDKeyFormat } from '#src/api/services/did.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { ethers, Wallet } from 'ethers'
-import { encryptDataForSubmission, isInputEncryptionConfigured } from '#src/lcore/encryption.ts'
+import { encryptDataForSubmission, encryptDataForSubmissionV2, isInputEncryptionConfigured, isV2Configured } from '#src/lcore/encryption.ts'
 import { SubmissionBatcher, type BatchableSubmission, type BatchFlushResult } from '#src/submission-batcher.ts'
 
 // Reuse L{CORE} configuration
@@ -140,15 +140,18 @@ export async function stopBatcher(): Promise<BatchFlushResult | null> {
 // ============= Submission Logic =============
 
 /**
- * Build a V1 submission from device data.
+ * Build a submission from device data.
+ * Uses V2 per-device ECDH when configured, falls back to V1.
  */
-function buildV1Submission(
+function buildSubmission(
 	deviceDid: string,
 	data: Record<string, unknown>,
 	signature: string,
 	timestamp: number
 ): BatchableSubmission {
-	const encrypted = encryptDataForSubmission(data)
+	const encrypted = isV2Configured()
+		? encryptDataForSubmissionV2(data, deviceDid)
+		: encryptDataForSubmission(data)
 
 	return {
 		action: 'device_attestation',
@@ -190,7 +193,7 @@ async function submitDeviceAttestationDirect(
 		const wallet = getWallet()
 		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
 
-		const payload = buildV1Submission(deviceDid, data, signature, timestamp)
+		const payload = buildSubmission(deviceDid, data, signature, timestamp)
 		const inputData = hexEncode(payload)
 
 		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
@@ -237,7 +240,7 @@ async function submitDeviceAttestationBatched(
 		}
 	}
 
-	const submission = buildV1Submission(deviceDid, data, signature, timestamp)
+	const submission = buildSubmission(deviceDid, data, signature, timestamp)
 	const batcher = getBatcher()
 	const flushResult = await batcher.add(submission)
 

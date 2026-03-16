@@ -14,8 +14,13 @@
 
 import canonicalize from 'canonicalize'
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js'
+import { secp256k1 } from '@noble/curves/secp256k1'
+import { hkdf } from '@noble/hashes/hkdf'
+import { sha256 as sha256Hash } from '@noble/hashes/sha256'
 import { utils } from 'ethers'
 import nacl from 'tweetnacl'
+
+import { parseDIDKey } from '#src/api/services/did.ts'
 
 import { getAttestorAddress, signAsAttestor } from '#src/server/utils/generics.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
@@ -442,7 +447,7 @@ export function isEncryptedOutput(
 
 	return (
 		payload.version === 1 &&
-		payload.algorithm === 'nacl-box' &&
+		(payload.algorithm === 'nacl-box' || payload.algorithm === 'xchacha20-poly1305') &&
 		typeof payload.nonce === 'string' &&
 		typeof payload.ciphertext === 'string' &&
 		typeof payload.publicKey === 'string'
@@ -705,6 +710,205 @@ export function decryptDataSubmission<T = unknown>(
 	}
 }
 
+// ============= V2 Per-Device ECDH Encryption =============
+
+/**
+ * V2 uses secp256k1 ECDH between each device's DID key and a secp256k1
+ * LCORE keypair. A per-submission symmetric key is derived via HKDF from
+ * the shared secret + a random nonce. If one device key leaks, only that
+ * device's data is exposed.
+ *
+ * Blob format: nonce (24 bytes) + ciphertext (variable)
+ * No ephemeral public key needed — the device DID *is* the key.
+ */
+
+let v2PrivateKey: Uint8Array | null = null
+let v2PublicKey: Uint8Array | null = null
+
+/**
+ * Initialize V2 per-device ECDH encryption.
+ * Reads LCORE_PRIVATE_KEY_V2 (hex-encoded 32-byte secp256k1 private key).
+ */
+export function initV2Encryption(): void {
+	const privateKeyHex = getEnvVariable('LCORE_PRIVATE_KEY_V2')
+
+	if (!privateKeyHex) {
+		console.log('[LCORE] LCORE_PRIVATE_KEY_V2 not set — V2 per-device ECDH disabled')
+		return
+	}
+
+	try {
+		v2PrivateKey = hexToUint8Array(privateKeyHex)
+
+		if (v2PrivateKey.length !== 32) {
+			throw new Error(`Invalid V2 private key length: expected 32 bytes, got ${v2PrivateKey.length}`)
+		}
+
+		v2PublicKey = secp256k1.getPublicKey(v2PrivateKey, true) // 33-byte compressed
+		console.log('[LCORE] V2 per-device ECDH encryption initialized')
+	} catch (e) {
+		console.error('[LCORE] Failed to initialize V2 encryption:', e)
+		v2PrivateKey = null
+		v2PublicKey = null
+	}
+}
+
+/**
+ * Check if V2 per-device ECDH is configured.
+ */
+export function isV2Configured(): boolean {
+	return v2PrivateKey !== null && v2PublicKey !== null
+}
+
+/**
+ * Get the V2 public key (hex-encoded compressed secp256k1).
+ */
+export function getV2PublicKey(): string | null {
+	if (!v2PublicKey) return null
+	return uint8ArrayToHex(v2PublicKey)
+}
+
+/**
+ * Derive a per-submission symmetric key via secp256k1 ECDH + HKDF.
+ *
+ * shared_secret = ECDH(privKey, pubKey) → x-coordinate (32 bytes)
+ * data_key = HKDF-SHA256(shared_secret, nonce, "pensieve-v2", 32)
+ */
+function deriveV2DataKey(
+	privateKey: Uint8Array,
+	publicKey: Uint8Array,
+	nonce: Uint8Array
+): Uint8Array {
+	// secp256k1 ECDH → compressed point (33 bytes), strip prefix for x-coordinate
+	const sharedPoint = secp256k1.getSharedSecret(privateKey, publicKey, true)
+	const sharedSecret = sharedPoint.slice(1) // 32-byte x-coordinate
+
+	// HKDF-SHA256: extract-then-expand
+	return hkdf(sha256Hash, sharedSecret, nonce, 'pensieve-v2', 32)
+}
+
+/**
+ * Encrypt data for V2 submission (per-device ECDH channel).
+ *
+ * Uses the device's secp256k1 public key (from DID) and the attestor's
+ * V2 private key to derive a per-device shared secret. A per-submission
+ * data key is derived via HKDF with a random nonce.
+ *
+ * @param data - Plaintext data to encrypt
+ * @param deviceDid - Device's did:key identifier
+ * @returns V2 encryption result
+ */
+export function encryptDataForSubmissionV2(data: unknown, deviceDid: string): {
+	data_hash: string
+	encrypted_data: string
+	encryption_key_id: string
+} {
+	if (!v2PrivateKey) {
+		throw new Error('V2 encryption not configured — LCORE_PRIVATE_KEY_V2 not set')
+	}
+
+	const devicePubKey = parseDIDKey(deviceDid)
+	if (!devicePubKey) {
+		throw new Error(`Invalid device DID: ${deviceDid}`)
+	}
+
+	// Generate 16-byte random salt for hash
+	const salt = nacl.randomBytes(16)
+
+	// Compute salted hash (same as V1)
+	const dataHash = computeDataHash(data, salt)
+
+	// Encrypt data + salt together
+	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })
+	const plaintextBytes = new TextEncoder().encode(plaintext)
+
+	// Random 24-byte nonce (safe for XChaCha20)
+	const nonce = nacl.randomBytes(24)
+
+	// Derive per-submission key via ECDH + HKDF
+	const dataKey = deriveV2DataKey(v2PrivateKey, devicePubKey, nonce)
+
+	// Encrypt with XChaCha20-Poly1305
+	const ciphertext = xchacha20poly1305(dataKey, nonce).encrypt(plaintextBytes)
+
+	// Pack as blob: nonce (24) + ciphertext (no ephemeral pubkey — device DID is the key)
+	const blob = new Uint8Array(nonce.length + ciphertext.length)
+	blob.set(nonce, 0)
+	blob.set(ciphertext, nonce.length)
+
+	return {
+		data_hash: dataHash,
+		encrypted_data: uint8ArrayToBase64(blob),
+		encryption_key_id: 'lcore_key_v2',
+	}
+}
+
+/**
+ * Decrypt a V2 packed blob (per-device ECDH channel).
+ *
+ * Blob format: nonce (24 bytes) + ciphertext
+ * Derives the same shared secret using LCORE_PRIVATE_KEY_V2 + device pubkey.
+ *
+ * @param encryptedBlob - Base64-encoded packed blob
+ * @param deviceDid - Device's did:key identifier (needed to derive shared secret)
+ * @returns Decrypted data and salt, or error
+ */
+export function decryptDataSubmissionV2<T = unknown>(
+	encryptedBlob: string,
+	deviceDid: string
+): DecryptionResult<{ data: T; salt: string }> | DecryptionError {
+	if (!v2PrivateKey) {
+		return {
+			success: false,
+			error: 'V2 decryption not configured — LCORE_PRIVATE_KEY_V2 not set',
+		}
+	}
+
+	const devicePubKey = parseDIDKey(deviceDid)
+	if (!devicePubKey) {
+		return {
+			success: false,
+			error: `Invalid device DID: ${deviceDid}`,
+		}
+	}
+
+	try {
+		const blob = base64ToUint8Array(encryptedBlob)
+
+		// Unpack: nonce (24) + ciphertext (rest)
+		const nonceLen = 24
+		if (blob.length < nonceLen + 1) {
+			return {
+				success: false,
+				error: `Invalid V2 blob length: expected at least ${nonceLen + 1} bytes, got ${blob.length}`,
+			}
+		}
+
+		const nonce = blob.slice(0, nonceLen)
+		const ciphertext = blob.slice(nonceLen)
+
+		// Derive same per-submission key
+		const dataKey = deriveV2DataKey(v2PrivateKey, devicePubKey, nonce)
+
+		// Decrypt
+		const decrypted = xchacha20poly1305(dataKey, nonce).decrypt(ciphertext)
+
+		// Parse JSON — expects { data, salt }
+		const plaintext = new TextDecoder().decode(decrypted)
+		const parsed = JSON.parse(plaintext) as { data: T; salt: string }
+
+		return {
+			success: true,
+			data: parsed,
+		}
+	} catch (e) {
+		return {
+			success: false,
+			error: e instanceof Error ? e.message : String(e),
+		}
+	}
+}
+
 // ============= Re-encryption for Inspect Proxy =============
 
 /**
@@ -725,20 +929,31 @@ export function validateNaClPublicKey(publicKeyBase64: string): boolean {
 /**
  * Re-encrypt data for a specific requester's public key.
  *
- * Used by the inspect proxy: decrypts V1 packed blobs with the admin
- * private key, then re-encrypts the plaintext for the requester using
- * NaCl box with an ephemeral keypair.
+ * Used by the inspect proxy: decrypts packed blobs with the appropriate
+ * key (V1 admin key or V2 per-device ECDH), then re-encrypts the plaintext
+ * for the requester using XChaCha20-Poly1305 with an ephemeral keypair.
  *
- * @param encryptedBlob - Base64-encoded V1 packed blob
+ * @param encryptedBlob - Base64-encoded packed blob
  * @param requesterPublicKeyBase64 - Requester's NaCl public key (base64)
+ * @param encryptionKeyId - Which key generation was used ('lcore_key_v1' or 'lcore_key_v2')
+ * @param deviceDid - Device DID (required for V2 decryption)
  * @returns Re-encrypted packed blob (base64) or error
  */
 export function reEncryptForRequester(
 	encryptedBlob: string,
-	requesterPublicKeyBase64: string
+	requesterPublicKeyBase64: string,
+	encryptionKeyId?: string,
+	deviceDid?: string
 ): { success: true; encrypted_data: string } | DecryptionError {
-	// Decrypt with admin key
-	const decrypted = decryptDataSubmission(encryptedBlob)
+	// Decrypt with appropriate key based on version
+	let decrypted: DecryptionResult<{ data: unknown; salt: string }> | DecryptionError
+
+	if (encryptionKeyId === 'lcore_key_v2' && deviceDid) {
+		decrypted = decryptDataSubmissionV2(encryptedBlob, deviceDid)
+	} else {
+		decrypted = decryptDataSubmission(encryptedBlob)
+	}
+
 	if (!decrypted.success) {
 		return decrypted
 	}
@@ -797,3 +1012,22 @@ export function uint8ArrayToBase64(bytes: Uint8Array): string {
  * Convert a Base64 string to Uint8Array (exported for inspect proxy).
  */
 export { base64ToUint8Array as decodeBase64 }
+
+/**
+ * Convert a hex string to Uint8Array.
+ */
+function hexToUint8Array(hex: string): Uint8Array {
+	const clean = hex.startsWith('0x') ? hex.slice(2) : hex
+	const bytes = new Uint8Array(clean.length / 2)
+	for (let i = 0; i < bytes.length; i++) {
+		bytes[i] = parseInt(clean.substring(i * 2, i * 2 + 2), 16)
+	}
+	return bytes
+}
+
+/**
+ * Convert a Uint8Array to hex string.
+ */
+function uint8ArrayToHex(bytes: Uint8Array): string {
+	return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}

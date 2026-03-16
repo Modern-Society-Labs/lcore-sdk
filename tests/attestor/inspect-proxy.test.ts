@@ -19,6 +19,9 @@ const require = createRequire(
 )
 const nacl = require('tweetnacl') as typeof import('tweetnacl')
 const { xchacha20poly1305 } = require('@noble/ciphers/chacha.js') as { xchacha20poly1305: typeof import('@noble/ciphers/chacha.js').xchacha20poly1305 }
+const { secp256k1 } = require('@noble/curves/secp256k1') as typeof import('@noble/curves/secp256k1')
+const { hkdf } = require('@noble/hashes/hkdf') as typeof import('@noble/hashes/hkdf')
+const { sha256: sha256Hash } = require('@noble/hashes/sha256') as typeof import('@noble/hashes/sha256')
 
 // Set env vars BEFORE importing the encryption module.
 // generics.ts runs getOperatorPrivateKey() at import time.
@@ -31,12 +34,43 @@ process.env.LCORE_PUBLIC_KEY = adminPublicKeyBase64
 // generics.ts requires PRIVATE_KEY or MNEMONIC at module load
 process.env.PRIVATE_KEY = '0x' + Buffer.from(nacl.randomBytes(32)).toString('hex')
 
+// V2 secp256k1 keypair for per-device ECDH tests
+const v2PrivateKey = nacl.randomBytes(32)
+const v2PublicKey = secp256k1.getPublicKey(v2PrivateKey, true)
+process.env.LCORE_PRIVATE_KEY_V2 = Buffer.from(v2PrivateKey).toString('hex')
+
+// Generate a test device secp256k1 keypair and DID
+const devicePrivateKey = nacl.randomBytes(32)
+const devicePublicKey = secp256k1.getPublicKey(devicePrivateKey, true)
+
+function testPublicKeyToDIDKey(publicKey: Uint8Array): string {
+	const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+	const prefixed = new Uint8Array(2 + publicKey.length)
+	prefixed[0] = 0xe7
+	prefixed[1] = 0x01
+	prefixed.set(publicKey, 2)
+
+	let num = BigInt('0x' + Buffer.from(prefixed).toString('hex'))
+	let encoded = ''
+	while (num > 0) {
+		encoded = BASE58_ALPHABET[Number(num % 58n)] + encoded
+		num = num / 58n
+	}
+	for (let i = 0; i < prefixed.length && prefixed[i] === 0; i++) {
+		encoded = '1' + encoded
+	}
+	return `did:key:z${encoded}`
+}
+
+const testDeviceDid = testPublicKeyToDIDKey(devicePublicKey)
+
 // Now import after env is set
 const encryption = await import('../../attestor/src/lcore/encryption.ts')
 
 // Initialize decryption and input encryption
 encryption.initDecryption()
 encryption.initInputEncryption()
+encryption.initV2Encryption()
 
 // ============= Helper =============
 
@@ -258,5 +292,148 @@ describe('getAdminPublicKey', () => {
 describe('isDecryptionConfigured', () => {
 	it('should return true after initDecryption', () => {
 		assert.equal(encryption.isDecryptionConfigured(), true)
+	})
+})
+
+// ============= V2 Per-Device ECDH Tests =============
+
+describe('V2 per-device ECDH encryption', () => {
+	it('isV2Configured should return true after initV2Encryption', () => {
+		assert.equal(encryption.isV2Configured(), true)
+	})
+
+	it('getV2PublicKey should return hex-encoded compressed secp256k1 key', () => {
+		const pubKey = encryption.getV2PublicKey()
+		assert.ok(pubKey)
+		assert.equal(pubKey!.length, 66) // 33 bytes * 2 hex chars
+		assert.ok(pubKey!.startsWith('02') || pubKey!.startsWith('03')) // compressed prefix
+	})
+
+	it('should encrypt and decrypt V2 data round-trip', () => {
+		const data = { temperature: 23.4, humidity: 65 }
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+
+		assert.ok(submission.data_hash)
+		assert.ok(submission.encrypted_data)
+		assert.equal(submission.encryption_key_id, 'lcore_key_v2')
+
+		// V2 blob is shorter than V1 (no 32-byte ephemeral pubkey)
+		const v1Submission = encryption.encryptDataForSubmission(data)
+		const v2BlobLen = Buffer.from(submission.encrypted_data, 'base64').length
+		const v1BlobLen = Buffer.from(v1Submission.encrypted_data, 'base64').length
+		assert.ok(v2BlobLen < v1BlobLen, `V2 blob (${v2BlobLen}) should be smaller than V1 (${v1BlobLen})`)
+
+		// Decrypt
+		const decrypted = encryption.decryptDataSubmissionV2(submission.encrypted_data, testDeviceDid)
+		assert.equal(decrypted.success, true)
+		assert.ok('data' in decrypted && decrypted.data)
+
+		const inner = (decrypted as { data: { data: unknown; salt: string } }).data
+		assert.deepStrictEqual(inner.data, data)
+		assert.ok(inner.salt)
+	})
+
+	it('should produce different ciphertext for same data (random nonce)', () => {
+		const data = { value: 42 }
+		const enc1 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const enc2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+
+		assert.notEqual(enc1.encrypted_data, enc2.encrypted_data)
+		assert.notEqual(enc1.data_hash, enc2.data_hash) // different salts
+	})
+
+	it('should fail to decrypt V2 blob with wrong device DID', () => {
+		const data = { secret: 'device-specific' }
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+
+		// Generate a different device DID
+		const otherKey = nacl.randomBytes(32)
+		const otherPubKey = secp256k1.getPublicKey(otherKey, true)
+		const otherDid = testPublicKeyToDIDKey(otherPubKey)
+
+		// Try to decrypt with wrong device DID — should fail
+		const result = encryption.decryptDataSubmissionV2(submission.encrypted_data, otherDid)
+		assert.equal(result.success, false)
+	})
+
+	it('V1 blob should NOT be decryptable as V2 (and vice versa)', () => {
+		const data = { cross: 'version' }
+
+		// V1 encrypt
+		const v1 = encryption.encryptDataForSubmission(data)
+		const v1AsV2 = encryption.decryptDataSubmissionV2(v1.encrypted_data, testDeviceDid)
+		assert.equal(v1AsV2.success, false)
+
+		// V2 encrypt — try V1 decrypt
+		const v2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const v2AsV1 = encryption.decryptDataSubmission(v2.encrypted_data)
+		assert.equal(v2AsV1.success, false)
+	})
+
+	it('data_hash should verify against decrypted data + salt', () => {
+		const data = { sensor: 'test', reading: 99 }
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+
+		// Decrypt to get data + salt
+		const decrypted = encryption.decryptDataSubmissionV2(submission.encrypted_data, testDeviceDid)
+		assert.equal(decrypted.success, true)
+		const inner = (decrypted as { data: { data: unknown; salt: string } }).data
+
+		// Recompute hash and verify
+		const salt = Buffer.from(inner.salt, 'base64')
+		const recomputedHash = encryption.computeDataHash(inner.data, new Uint8Array(salt))
+		assert.equal(recomputedHash, submission.data_hash)
+	})
+})
+
+describe('reEncryptForRequester with V2', () => {
+	it('should re-encrypt V2 blob for requester', () => {
+		const data = { temperature: 25.0 }
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+
+		const requester = nacl.box.keyPair()
+		const requesterPubKey = Buffer.from(requester.publicKey).toString('base64')
+
+		const result = encryption.reEncryptForRequester(
+			submission.encrypted_data,
+			requesterPubKey,
+			'lcore_key_v2',
+			testDeviceDid
+		)
+		assert.equal(result.success, true)
+		assert.ok('encrypted_data' in result)
+
+		// Requester decrypts
+		const decrypted = decryptPackedBlob(
+			(result as { encrypted_data: string }).encrypted_data,
+			requester.secretKey
+		)
+
+		const inner = decrypted as { data: unknown; salt: string }
+		assert.deepStrictEqual(inner.data, data)
+		assert.ok(inner.salt)
+	})
+
+	it('should still re-encrypt V1 blobs without device_did', () => {
+		const data = { legacy: true }
+		const submission = encryption.encryptDataForSubmission(data)
+
+		const requester = nacl.box.keyPair()
+		const requesterPubKey = Buffer.from(requester.publicKey).toString('base64')
+
+		// No encryption_key_id or device_did — should use V1 path
+		const result = encryption.reEncryptForRequester(
+			submission.encrypted_data,
+			requesterPubKey
+		)
+		assert.equal(result.success, true)
+
+		const decrypted = decryptPackedBlob(
+			(result as { encrypted_data: string }).encrypted_data,
+			requester.secretKey
+		)
+
+		const inner = decrypted as { data: unknown; salt: string }
+		assert.deepStrictEqual(inner.data, data)
 	})
 })

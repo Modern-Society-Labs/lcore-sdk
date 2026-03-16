@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws'
 
 import { handleApiRequest, handleHealthCheck } from '#src/api/routes/index.ts'
 import { API_SERVER_PORT, BROWSER_RPC_PATHNAME, LOG_STREAM_PATHNAME, WS_PATHNAME } from '#src/config/index.ts'
-import { initDecryption, initInputEncryption } from '#src/lcore/index.ts'
+import { initDecryption, initInputEncryption, initV2Encryption } from '#src/lcore/index.ts'
 import { AttestorServerSocket } from '#src/server/socket.ts'
 import { getAttestorAddress } from '#src/server/utils/generics.ts'
 import { addKeepAlive } from '#src/server/utils/keep-alive.ts'
@@ -78,6 +78,7 @@ export async function createServer(port = PORT) {
 	// Initialize L{CORE} encryption/decryption for privacy-preserving communication
 	initDecryption()       // For decrypting query responses from Cartesi
 	initInputEncryption()  // For encrypting device inputs to Cartesi InputBox
+	initV2Encryption()     // For V2 per-device ECDH encryption (optional)
 
 	const http = createHttpServer()
 	const serveBrowserRpc = serveStatic(

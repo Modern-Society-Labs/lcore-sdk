@@ -42,6 +42,12 @@ export {
 	encryptDataForSubmission,
 	computeDataHash,
 	decryptDataSubmission,
+	// V2 per-device ECDH encryption
+	initV2Encryption,
+	isV2Configured,
+	getV2PublicKey,
+	encryptDataForSubmissionV2,
+	decryptDataSubmissionV2,
 	type EncryptedOutput,
 	type DecryptionResult,
 	type DecryptionError,
