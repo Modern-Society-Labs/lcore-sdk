@@ -8,7 +8,7 @@ ENV CARTESI_SNAPSHOT_DIR=/usr/share/rollups-node/snapshot
 ENV CARTESI_HTTP_ADDRESS=0.0.0.0
 
 # Copy the machine snapshot from cartesi build output
-COPY --chown=cartesi:cartesi .cartesi/image /usr/share/rollups-node/snapshot
+COPY --chown=cartesi:cartesi . /usr/share/rollups-node/snapshot
 
 # Labels for EigenCloud
 LABEL tee.launch_policy.log_redirect="always"

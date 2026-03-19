@@ -76,6 +76,137 @@ The architecture is built on three core principles:
 
 ---
 
+## L{CORE} Security Architecture
+
+### Encryption Model
+
+Two encryption versions:
+
+- **V1**: Single X25519 keypair. Attestor holds private key, Cartesi node stores encrypted blobs + hashes. Uses XChaCha20-Poly1305.
+- **V2**: Per-device ECDH (secp256k1). Each device gets a unique derived key via `ECDH(LCORE_PRIVATE_KEY_V2, device_pubkey) + HKDF`. Blast radius isolation -- compromising one device can't decrypt others.
+
+### Device Attestation Flow (Deterministic Hash Architecture)
+
+The device attestation system uses a deterministic hash that both the device and the Cartesi node can independently compute and verify:
+
+```
+data_hash = sha256(canonical_json(payload) + device_did + timestamp)
+```
+
+Key properties:
+
+- **RFC 8785 JCS** (JSON Canonicalization Scheme) via `canonicalize` package ensures deterministic JSON serialization
+- **No salt in hash** -- salt is only inside the encrypted blob for ciphertext privacy
+- **Device signs the hash** as a JWS (ES256K / secp256k1) -- `JWS(data_hash, device_private_key)`
+- **Cartesi independently verifies** the JWS against the device's `did:key` -- this is fraud-provable
+
+#### Data Flow
+
+```
+Device SDK                    Attestor (TEE)                Cartesi Node
+-----------                    --------------                ------------
+1. Generate secp256k1 keypair
+2. Create did:key from pubkey
+3. Build sensor payload
+4. Compute data_hash =
+   sha256(JCS(payload) +
+   did + timestamp)
+5. Sign data_hash as JWS
+   (ES256K)
+6. POST /api/device/submit
+   {did, payload,
+    signature, timestamp}
+                              7. Recompute data_hash
+                                 from payload
+                              8. Verify device JWS
+                                 (fail-fast pre-check)
+                              9. Encrypt payload with
+                                 LCORE_PUBLIC_KEY
+                              10. Build V1 submission:
+                                  {action, data_hash,
+                                   jws, encrypted_data,
+                                   device_did, timestamp,
+                                   encryption_key_id}
+                              11. Hex-encode and submit
+                                  to InputBox on-chain
+                                                            12. Decode hex payload
+                                                            13. Verify JWS over
+                                                                data_hash (FRAUD-PROVABLE)
+                                                            14. Store in SQLite:
+                                                                data_hash, encrypted_data,
+                                                                jws, encryption_key_id
+                                                            15. Emit notice with result
+```
+
+#### Trust Model
+
+- **Device signature** is verified in Cartesi (fraud-provable). Anyone can re-run the Cartesi machine and verify every JWS was valid.
+- **Attestor TEE** provides the trust anchor for API attestations (zkFetch/claimTunnel).
+- **Cartesi node never decrypts** device data. It stores encrypted blobs + hashes.
+- **Attestor inspect proxy** decrypts data for authorized requesters.
+
+### Two Data Paths
+
+1. **Device Attestation** (`device_attestation`) -- External IoT device signs data_hash, attestor encrypts and relays to Cartesi. Device JWS verified in Cartesi (fraud-provable).
+
+2. **API Attestation** (`ingest_attestation`) -- Attestor IS the source (zkFetch/claimTunnel). Data encrypted with salted hash. TEE attestation is the trust anchor, not a device signature.
+
+### Batching
+
+Device submissions are buffered and flushed as `batch_device_attestation` to mitigate metadata activity pattern leaks (timing, cadence). Configurable via:
+
+- `LCORE_BATCH_ENABLED` (0 to disable)
+- `LCORE_BATCH_FLUSH_INTERVAL` (default: 30s)
+- `LCORE_BATCH_MAX_SIZE` (default: 50)
+
+### Key Rotation
+
+The `rotate_encryption_key` advance handler allows admin-only key rotation:
+
+- Accepts new public key + key ID
+- Deprecates current active key
+- New submissions use the new key ID
+- Old encrypted data remains readable with the old key
+
+### V1 Device Payload Format
+
+```typescript
+interface V1DevicePayload {
+  action: 'device_attestation';
+  data_hash: string;           // hex sha256(JCS(data) + device_did + timestamp)
+  jws: string;                 // JWS over data_hash (ES256K)
+  encrypted_data: string;      // base64 encrypted blob (opaque to node)
+  device_did: string;          // did:key:z... (secp256k1)
+  timestamp: number;
+  encryption_key_id: string;   // e.g. 'lcore_key_v1'
+  source?: string;             // e.g. 'relay'
+}
+```
+
+### Database Schema (device_attestations)
+
+```sql
+CREATE TABLE IF NOT EXISTS device_attestations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_did TEXT NOT NULL,
+  data_hash TEXT NOT NULL,
+  encrypted_data TEXT NOT NULL,
+  jws TEXT NOT NULL,
+  encryption_key_id TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  source TEXT,
+  input_index INTEGER NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_attestations_did
+  ON device_attestations(device_did);
+CREATE INDEX IF NOT EXISTS idx_device_attestations_hash
+  ON device_attestations(data_hash);
+```
+
+---
+
 ## File Structure & Responsibilities
 
 ```

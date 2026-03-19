@@ -46,3 +46,8 @@ pensieve-protocol-plan.md
 # Cartesi build artifacts
 .cartesi/
 .playwright-mcp/
+
+# Test scripts
+test-submit.mts
+tests/bench/
+check-inputs.mts

@@ -139,6 +139,74 @@ export function createJWS(
 	return `${headerB64}.${payloadB64}.${sigB64}`
 }
 
+/**
+ * Verify a JWS where the payload is a raw hash string (not JSON).
+ *
+ * Used for device attestation submissions where the device signs
+ * the deterministic data_hash directly.
+ *
+ * @param jws - The JWS compact serialization
+ * @param expectedHash - The expected hash string (64-char hex)
+ * @param pubkey - The secp256k1 public key to verify against
+ * @returns True if signature is valid and payload matches hash
+ */
+export function verifyJWSOverHash(
+	jws: string,
+	expectedHash: string,
+	pubkey: Uint8Array
+): boolean {
+	try {
+		const parts = jws.split('.')
+		if (parts.length !== 3) {
+			return false
+		}
+
+		const [headerB64, payloadB64, sigB64] = parts
+
+		// The payload is the raw hash string (not JSON-wrapped)
+		const expectedPayloadB64 = base64urlEncode(expectedHash)
+		if (payloadB64 !== expectedPayloadB64) {
+			return false
+		}
+
+		const message = `${headerB64}.${payloadB64}`
+		const signature = base64urlDecode(sigB64)
+
+		const msgHash = sha256(new TextEncoder().encode(message))
+
+		return secp256k1.verify(signature, msgHash, pubkey)
+	} catch {
+		return false
+	}
+}
+
+/**
+ * Create a JWS over a raw hash string (not JSON).
+ *
+ * Used by device SDKs to sign the deterministic data_hash.
+ *
+ * @param hash - The hash string to sign (64-char hex)
+ * @param privateKey - The secp256k1 private key (32 bytes)
+ * @returns The JWS compact serialization
+ */
+export function createJWSOverHash(
+	hash: string,
+	privateKey: Uint8Array
+): string {
+	const header = { alg: 'ES256K', typ: 'JWT' }
+	const headerB64 = base64urlEncode(JSON.stringify(header))
+	const payloadB64 = base64urlEncode(hash)
+
+	const message = `${headerB64}.${payloadB64}`
+	const msgHash = sha256(new TextEncoder().encode(message))
+
+	const signature = secp256k1.sign(msgHash, privateKey)
+	const sigBytes = signature.toCompactRawBytes()
+	const sigB64 = base64urlEncodeBytes(sigBytes)
+
+	return `${headerB64}.${payloadB64}.${sigB64}`
+}
+
 // Base64url encoding/decoding utilities
 
 function base64urlDecode(str: string): Uint8Array {

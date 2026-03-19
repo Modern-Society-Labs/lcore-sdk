@@ -40,6 +40,7 @@ export {
 	encryptInputEnvelope,
 	// V1 data encryption
 	encryptDataForSubmission,
+	encryptDataForAPIAttestation,
 	computeDataHash,
 	decryptDataSubmission,
 	// V2 per-device ECDH encryption

@@ -63,6 +63,7 @@ function testPublicKeyToDIDKey(publicKey: Uint8Array): string {
 }
 
 const testDeviceDid = testPublicKeyToDIDKey(devicePublicKey)
+const testTimestamp = 1700000000
 
 // Now import after env is set
 const encryption = await import('../../attestor/src/lcore/encryption.ts')
@@ -250,7 +251,7 @@ describe('encryptDataForSubmission → reEncryptForRequester round-trip', () => 
 	it('should round-trip through the full V1 pipeline', () => {
 		// Step 1: Encrypt with encryptDataForSubmission (what the attestor does on write)
 		const originalData = { sensor_id: 'test-001', temperature: 22.5, humidity: 60 }
-		const submission = encryption.encryptDataForSubmission(originalData)
+		const submission = encryption.encryptDataForSubmission(originalData, testDeviceDid, testTimestamp)
 
 		assert.ok(submission.data_hash)
 		assert.ok(submission.encrypted_data)
@@ -311,14 +312,14 @@ describe('V2 per-device ECDH encryption', () => {
 
 	it('should encrypt and decrypt V2 data round-trip', () => {
 		const data = { temperature: 23.4, humidity: 65 }
-		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 
 		assert.ok(submission.data_hash)
 		assert.ok(submission.encrypted_data)
 		assert.equal(submission.encryption_key_id, 'lcore_key_v2')
 
 		// V2 blob is shorter than V1 (no 32-byte ephemeral pubkey)
-		const v1Submission = encryption.encryptDataForSubmission(data)
+		const v1Submission = encryption.encryptDataForSubmission(data, testDeviceDid, testTimestamp)
 		const v2BlobLen = Buffer.from(submission.encrypted_data, 'base64').length
 		const v1BlobLen = Buffer.from(v1Submission.encrypted_data, 'base64').length
 		assert.ok(v2BlobLen < v1BlobLen, `V2 blob (${v2BlobLen}) should be smaller than V1 (${v1BlobLen})`)
@@ -335,16 +336,17 @@ describe('V2 per-device ECDH encryption', () => {
 
 	it('should produce different ciphertext for same data (random nonce)', () => {
 		const data = { value: 42 }
-		const enc1 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
-		const enc2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const enc1 = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
+		const enc2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 
 		assert.notEqual(enc1.encrypted_data, enc2.encrypted_data)
-		assert.notEqual(enc1.data_hash, enc2.data_hash) // different salts
+		// Hash is now deterministic (no salt) — same inputs yield the same hash
+		assert.equal(enc1.data_hash, enc2.data_hash)
 	})
 
 	it('should fail to decrypt V2 blob with wrong device DID', () => {
 		const data = { secret: 'device-specific' }
-		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 
 		// Generate a different device DID
 		const otherKey = nacl.randomBytes(32)
@@ -360,28 +362,27 @@ describe('V2 per-device ECDH encryption', () => {
 		const data = { cross: 'version' }
 
 		// V1 encrypt
-		const v1 = encryption.encryptDataForSubmission(data)
+		const v1 = encryption.encryptDataForSubmission(data, testDeviceDid, testTimestamp)
 		const v1AsV2 = encryption.decryptDataSubmissionV2(v1.encrypted_data, testDeviceDid)
 		assert.equal(v1AsV2.success, false)
 
 		// V2 encrypt — try V1 decrypt
-		const v2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const v2 = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 		const v2AsV1 = encryption.decryptDataSubmission(v2.encrypted_data)
 		assert.equal(v2AsV1.success, false)
 	})
 
-	it('data_hash should verify against decrypted data + salt', () => {
+	it('data_hash should verify against decrypted data + deviceDid + timestamp', () => {
 		const data = { sensor: 'test', reading: 99 }
-		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 
-		// Decrypt to get data + salt
+		// Decrypt to confirm round-trip
 		const decrypted = encryption.decryptDataSubmissionV2(submission.encrypted_data, testDeviceDid)
 		assert.equal(decrypted.success, true)
-		const inner = (decrypted as { data: { data: unknown; salt: string } }).data
+		const inner = (decrypted as { data: { data: unknown } }).data
 
-		// Recompute hash and verify
-		const salt = Buffer.from(inner.salt, 'base64')
-		const recomputedHash = encryption.computeDataHash(inner.data, new Uint8Array(salt))
+		// Recompute hash using deterministic inputs (no salt)
+		const recomputedHash = encryption.computeDataHash(inner.data, testDeviceDid, testTimestamp)
 		assert.equal(recomputedHash, submission.data_hash)
 	})
 })
@@ -389,7 +390,7 @@ describe('V2 per-device ECDH encryption', () => {
 describe('reEncryptForRequester with V2', () => {
 	it('should re-encrypt V2 blob for requester', () => {
 		const data = { temperature: 25.0 }
-		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid)
+		const submission = encryption.encryptDataForSubmissionV2(data, testDeviceDid, testTimestamp)
 
 		const requester = nacl.box.keyPair()
 		const requesterPubKey = Buffer.from(requester.publicKey).toString('base64')
@@ -416,7 +417,7 @@ describe('reEncryptForRequester with V2', () => {
 
 	it('should still re-encrypt V1 blobs without device_did', () => {
 		const data = { legacy: true }
-		const submission = encryption.encryptDataForSubmission(data)
+		const submission = encryption.encryptDataForSubmission(data, testDeviceDid, testTimestamp)
 
 		const requester = nacl.box.keyPair()
 		const requesterPubKey = Buffer.from(requester.publicKey).toString('base64')

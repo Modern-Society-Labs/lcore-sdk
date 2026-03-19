@@ -565,20 +565,25 @@ export function encryptInputEnvelope(data: unknown): { encrypted: true; payload:
 // ============= V1 Data Encryption =============
 
 /**
- * Compute a salted hash of data for V1 submissions.
+ * Compute a deterministic hash of data for device attestation submissions.
  *
- * hash = sha256(canonical_json(data) + salt)
+ * hash = sha256(canonical_json(data) + device_did + timestamp)
  *
- * The salt is included inside the encrypted blob so only the TEE can
- * recover it — prevents brute-forcing bounded data values.
+ * This hash is deterministic — devices compute the same hash client-side
+ * and sign it via JWS. Cartesi independently verifies the device signature
+ * over this hash without ever seeing the plaintext.
+ *
+ * The device_did + timestamp make rainbow table attacks impractical
+ * even for low-entropy sensor data (e.g., temperature readings).
  *
  * @param data - The data to hash
- * @param salt - 16-byte random salt
+ * @param deviceDid - Device's did:key identifier
+ * @param timestamp - Unix timestamp of the submission
  * @returns hex-encoded SHA-256 hash (64 chars)
  */
-export function computeDataHash(data: unknown, salt: Uint8Array): string {
+export function computeDataHash(data: unknown, deviceDid: string, timestamp: number): string {
 	const canonical = typeof data === 'string' ? data : (canonicalize as unknown as (v: unknown) => string)(data)
-	const combined = canonical + uint8ArrayToBase64(salt)
+	const combined = canonical + deviceDid + String(timestamp)
 	const hash = utils.sha256(Buffer.from(combined))
 	// Remove 0x prefix from ethers sha256
 	return hash.startsWith('0x') ? hash.slice(2) : hash
@@ -594,7 +599,7 @@ export function computeDataHash(data: unknown, salt: Uint8Array): string {
  * @param data - The plaintext data to encrypt
  * @returns V1 encryption result with hash, encrypted blob, and metadata
  */
-export function encryptDataForSubmission(data: unknown): {
+export function encryptDataForSubmission(data: unknown, deviceDid: string, timestamp: number): {
 	data_hash: string
 	encrypted_data: string
 	encryption_key_id: string
@@ -603,11 +608,63 @@ export function encryptDataForSubmission(data: unknown): {
 		throw new Error('Input encryption not configured - LCORE_PUBLIC_KEY not set')
 	}
 
-	// Generate 16-byte random salt
+	// Compute deterministic hash (device can compute the same hash and sign it)
+	const dataHash = computeDataHash(data, deviceDid, timestamp)
+
+	// Generate random salt for encryption privacy only (not part of hash)
 	const salt = nacl.randomBytes(16)
 
-	// Compute salted hash
-	const dataHash = computeDataHash(data, salt)
+	// Encrypt data + salt together (salt prevents ciphertext correlation)
+	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })
+	const plaintextBytes = new TextEncoder().encode(plaintext)
+
+	// X25519 ECDH + XChaCha20-Poly1305 with ephemeral keypair
+	const ephemeral = nacl.box.keyPair()
+	const nonce = nacl.randomBytes(24)
+
+	const sharedSecret = nacl.scalarMult(ephemeral.secretKey, inputPublicKey)
+	const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes)
+
+	// Pack as a single base64 blob: nonce (24) + ephemeralPubKey (32) + ciphertext+tag
+	const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
+	blob.set(nonce, 0)
+	blob.set(ephemeral.publicKey, nonce.length)
+	blob.set(ciphertext, nonce.length + ephemeral.publicKey.length)
+
+	return {
+		data_hash: dataHash,
+		encrypted_data: uint8ArrayToBase64(blob),
+		encryption_key_id: 'lcore_key_v1',
+	}
+}
+
+/**
+ * Encrypt data for API attestation submissions (claimTunnel / zkFetch).
+ *
+ * Unlike device submissions, API attestations have no external device to
+ * verify — the attestor IS the data source. Uses a random salt in the hash
+ * for maximum privacy (no brute-force risk).
+ *
+ * @param data - The plaintext data to encrypt
+ * @returns Encryption result with salted hash, encrypted blob, and metadata
+ */
+export function encryptDataForAPIAttestation(data: unknown): {
+	data_hash: string
+	encrypted_data: string
+	encryption_key_id: string
+} {
+	if(!inputPublicKey) {
+		throw new Error('Input encryption not configured - LCORE_PUBLIC_KEY not set')
+	}
+
+	// Generate 16-byte random salt (part of hash for API attestations)
+	const salt = nacl.randomBytes(16)
+
+	// Salted hash — no device verification needed for API path
+	const canonical = typeof data === 'string' ? data : (canonicalize as unknown as (v: unknown) => string)(data)
+	const combined = canonical + uint8ArrayToBase64(salt)
+	const rawHash = utils.sha256(Buffer.from(combined))
+	const dataHash = rawHash.startsWith('0x') ? rawHash.slice(2) : rawHash
 
 	// Encrypt data + salt together
 	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })
@@ -620,7 +677,6 @@ export function encryptDataForSubmission(data: unknown): {
 	const sharedSecret = nacl.scalarMult(ephemeral.secretKey, inputPublicKey)
 	const ciphertext = xchacha20poly1305(sharedSecret, nonce).encrypt(plaintextBytes)
 
-	// Pack as a single base64 blob: nonce (24) + ephemeralPubKey (32) + ciphertext+tag
 	const blob = new Uint8Array(nonce.length + ephemeral.publicKey.length + ciphertext.length)
 	blob.set(nonce, 0)
 	blob.set(ephemeral.publicKey, nonce.length)
@@ -798,7 +854,7 @@ function deriveV2DataKey(
  * @param deviceDid - Device's did:key identifier
  * @returns V2 encryption result
  */
-export function encryptDataForSubmissionV2(data: unknown, deviceDid: string): {
+export function encryptDataForSubmissionV2(data: unknown, deviceDid: string, timestamp: number): {
 	data_hash: string
 	encrypted_data: string
 	encryption_key_id: string
@@ -812,11 +868,11 @@ export function encryptDataForSubmissionV2(data: unknown, deviceDid: string): {
 		throw new Error(`Invalid device DID: ${deviceDid}`)
 	}
 
-	// Generate 16-byte random salt for hash
-	const salt = nacl.randomBytes(16)
+	// Compute deterministic hash (device can compute the same hash and sign it)
+	const dataHash = computeDataHash(data, deviceDid, timestamp)
 
-	// Compute salted hash (same as V1)
-	const dataHash = computeDataHash(data, salt)
+	// Generate random salt for encryption privacy only (not part of hash)
+	const salt = nacl.randomBytes(16)
 
 	// Encrypt data + salt together
 	const plaintext = JSON.stringify({ data, salt: uint8ArrayToBase64(salt) })

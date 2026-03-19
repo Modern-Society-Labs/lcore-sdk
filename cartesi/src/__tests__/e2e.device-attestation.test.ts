@@ -8,8 +8,9 @@
  * - Device attestation storage and queries
  *
  * SECURITY MODEL:
- * - Node stores encrypted blobs + salted hashes WITHOUT decrypting
- * - JWS verification is over the data_hash (not plaintext data)
+ * - Node stores encrypted blobs + deterministic hashes WITHOUT decrypting
+ * - data_hash = sha256(canonical_json(data) + device_did + timestamp)
+ * - Device signs data_hash, Cartesi independently verifies (fraud-provable)
  * - Anyone can re-run Cartesi and verify every signature was valid
  */
 
@@ -63,12 +64,12 @@ function publicKeyToDIDKey(publicKey: Uint8Array): string {
 // ============= V1 Helpers =============
 
 /**
- * Compute salted hash using RFC 8785 JCS (matches attestor's computeDataHash)
+ * Compute deterministic hash using RFC 8785 JCS (matches attestor's computeDataHash)
+ * hash = sha256(canonical_json(data) + device_did + timestamp)
  */
-function computeDataHash(data: unknown, salt: Uint8Array): string {
+function computeDataHash(data: unknown, deviceDid: string, timestamp: number): string {
   const canonical = typeof data === 'string' ? data : canonicalize(data);
-  const saltBase64 = Buffer.from(salt).toString('base64');
-  const combined = canonical + saltBase64;
+  const combined = canonical + deviceDid + String(timestamp);
   const hash = sha256(new TextEncoder().encode(combined));
   return bytesToHex(hash);
 }
@@ -126,18 +127,14 @@ function buildV1DeviceAttestation(
   privateKey: Uint8Array,
   timestamp: number = Math.floor(Date.now() / 1000)
 ): V1DevicePayload {
-  // Generate salt
-  const salt = nacl.randomBytes(16);
+  // Compute deterministic hash (same as device SDK computes)
+  const dataHash = computeDataHash(data, deviceDid, timestamp);
 
-  // Compute salted hash
-  const dataHash = computeDataHash(data, salt);
-
-  // Create JWS over hash
+  // Create JWS over hash (device signs the hash)
   const jws = createJWSOverHash(dataHash, privateKey);
 
   // Create dummy encrypted data (node doesn't decrypt)
-  // In production, this would be NaCl box encrypted { data, salt }
-  const dummyEncrypted = Buffer.from(JSON.stringify({ data, salt: Buffer.from(salt).toString('base64') })).toString('base64');
+  const dummyEncrypted = Buffer.from(JSON.stringify({ data })).toString('base64');
 
   return {
     action: 'device_attestation',
@@ -257,11 +254,11 @@ describe('E2E: Device Attestation V1 Format', () => {
     it('should reject when JWS signs wrong hash', async () => {
       const { privateKey, publicKey } = generateDeviceKeypair();
       const deviceDid = publicKeyToDIDKey(publicKey);
+      const timestamp = Math.floor(Date.now() / 1000);
 
       // Compute correct hash
       const data = { temperature: 22.0 };
-      const salt = nacl.randomBytes(16);
-      const correctHash = computeDataHash(data, salt);
+      const correctHash = computeDataHash(data, deviceDid, timestamp);
 
       // Sign a DIFFERENT hash
       const wrongHash = 'a'.repeat(64);
@@ -279,10 +276,10 @@ describe('E2E: Device Attestation V1 Format', () => {
       const { publicKey } = generateDeviceKeypair();
       const { privateKey: wrongKey } = generateDeviceKeypair();
       const deviceDid = publicKeyToDIDKey(publicKey);
+      const timestamp = Math.floor(Date.now() / 1000);
 
       const data = { temperature: 22.0 };
-      const salt = nacl.randomBytes(16);
-      const dataHash = computeDataHash(data, salt);
+      const dataHash = computeDataHash(data, deviceDid, timestamp);
 
       // Sign with WRONG key
       const jws = createJWSOverHash(dataHash, wrongKey);
@@ -335,8 +332,9 @@ describe('E2E: Device Attestation V1 Format', () => {
     it('should reject attestation with missing did:key', async () => {
       const { privateKey } = generateDeviceKeypair();
       const data = { temperature: 22.0 };
-      const salt = nacl.randomBytes(16);
-      const dataHash = computeDataHash(data, salt);
+      const timestamp = Math.floor(Date.now() / 1000);
+      // Use a fake DID for hash since device_did will be missing from payload
+      const dataHash = computeDataHash(data, 'did:key:zFAKE', timestamp);
       const jws = createJWSOverHash(dataHash, privateKey);
 
       const payload = {
@@ -345,7 +343,7 @@ describe('E2E: Device Attestation V1 Format', () => {
         jws,
         encrypted_data: Buffer.from('test').toString('base64'),
         // device_did: MISSING!
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp,
         encryption_key_id: 'lcore_key_v1',
         source: 'relay',
       };
@@ -397,8 +395,8 @@ describe('E2E: Device Attestation V1 Format', () => {
     it('should reject attestation with missing encrypted_data', async () => {
       const { privateKey, publicKey } = generateDeviceKeypair();
       const deviceDid = publicKeyToDIDKey(publicKey);
-      const salt = nacl.randomBytes(16);
-      const dataHash = computeDataHash({ temp: 22 }, salt);
+      const timestamp = Math.floor(Date.now() / 1000);
+      const dataHash = computeDataHash({ temp: 22 }, deviceDid, timestamp);
       const jws = createJWSOverHash(dataHash, privateKey);
 
       const payload = {
@@ -707,8 +705,8 @@ describe('E2E: Device Attestation V1 Format', () => {
 
     it('should reject empty device_did string', async () => {
       const { privateKey } = generateDeviceKeypair();
-      const salt = nacl.randomBytes(16);
-      const dataHash = computeDataHash({ temp: 22 }, salt);
+      const timestamp = Math.floor(Date.now() / 1000);
+      const dataHash = computeDataHash({ temp: 22 }, '', timestamp);
       const jws = createJWSOverHash(dataHash, privateKey);
 
       const payload: V1DevicePayload = {
@@ -717,7 +715,7 @@ describe('E2E: Device Attestation V1 Format', () => {
         jws,
         encrypted_data: Buffer.from('test').toString('base64'),
         device_did: '',
-        timestamp: Math.floor(Date.now() / 1000),
+        timestamp,
         encryption_key_id: 'lcore_key_v1',
         source: 'relay',
       };

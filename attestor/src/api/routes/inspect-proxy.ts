@@ -56,9 +56,9 @@ async function queryCartesiInspect<T = unknown>(
 	params: Record<string, string>
 ): Promise<{ success: true; data: T; wasEncrypted: boolean } | { success: false; error: string }> {
 	const query = { type, params }
-	const hexPayload = hexEncode(query).slice(2)
+	const encodedPayload = encodeURIComponent(JSON.stringify(query))
 
-	const response = await fetch(`${LCORE_NODE_URL}/inspect/${hexPayload}`, {
+	const response = await fetch(`${LCORE_NODE_URL}/inspect/${encodedPayload}`, {
 		method: 'GET',
 		signal: AbortSignal.timeout(10000),
 	})

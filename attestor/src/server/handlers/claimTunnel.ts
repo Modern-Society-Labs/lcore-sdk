@@ -1,6 +1,6 @@
 import { MAX_CLAIM_TIMESTAMP_DIFF_S } from '#src/config/index.ts'
 import { discretizeClaimData, submitAttestationToLCore } from '#src/lcore/index.ts'
-import { encryptDataForSubmission } from '#src/lcore/encryption.ts'
+import { encryptDataForAPIAttestation } from '#src/lcore/encryption.ts'
 import { ClaimTunnelResponse } from '#src/proto/api.ts'
 import { getApm } from '#src/server/utils/apm.ts'
 import { assertTranscriptsMatch, assertValidClaimRequest } from '#src/server/utils/assert-valid-claim-request.ts'
@@ -133,15 +133,15 @@ export const claimTunnel: RPCHandler<'claimTunnel'> = async(
 			const signatureBase64 = Buffer.from(res.signatures.claimSignature).toString('base64')
 
 			// V1: Encrypt data entries before submission
-			const encryptedParams = encryptDataForSubmission(res.claim.parameters || '')
-			const encryptedContext = encryptDataForSubmission(res.claim.context || '')
+			const encryptedParams = encryptDataForAPIAttestation(res.claim.parameters || '')
+			const encryptedContext = encryptDataForAPIAttestation(res.claim.context || '')
 
 			// Compute overall data hash from both entries
 			const allData = {
 				parameters: res.claim.parameters || '',
 				context: res.claim.context || '',
 			}
-			const overallEncrypted = encryptDataForSubmission(allData)
+			const overallEncrypted = encryptDataForAPIAttestation(allData)
 
 			const lcoreResult = await submitAttestationToLCore({
 				id: res.claim.identifier,

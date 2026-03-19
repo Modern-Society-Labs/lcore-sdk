@@ -27,7 +27,7 @@ import { verifyJWSOverHash, isValidDIDKey } from '../crypto/jws';
  */
 interface V1DevicePayload {
   action: 'device_attestation';
-  data_hash: string;           // hex sha256(canonical_json(data) + salt)
+  data_hash: string;           // hex sha256(canonical_json(data) + device_did + timestamp)
   jws: string;                 // JWS over data_hash
   encrypted_data: string;      // base64 encrypted blob (opaque to node)
   device_did: string;
@@ -133,8 +133,9 @@ export const handleDeviceAttestation = async (
   }
 
   // Step 2: Verify JWS over hash (FRAUD-PROVABLE)
-  // This is the key security property - verification happens in Cartesi
-  // Anyone can re-run Cartesi and verify the JWS was valid over the hash
+  // The device signs: sha256(canonical_json(payload) + device_did + timestamp)
+  // This is deterministic — both device and Cartesi compute the same hash.
+  // Anyone can re-run Cartesi and verify every device signature was valid.
   try {
     const isValid = verifyJWSOverHash(
       p.jws,

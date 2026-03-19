@@ -1,10 +1,12 @@
 # L{CORE} Self-Hosting Docker Compose
 #
+# Usage:
+#   cp .env.example .env   # Fill in your values
+#   docker compose up -d
+#
 # For EigenCloud deployment, deploy each service separately:
 #   - cartesi-node: modernsociety/lcore-node:latest
 #   - attestor: modernsociety/lcore-attestor:latest
-#
-# Both connect to external Supabase PostgreSQL.
 
 services:
   # Cartesi Node - Validator with L{CORE} dApp
@@ -42,7 +44,9 @@ services:
       - LCORE_DAPP_ADDRESS=${LCORE_DAPP_ADDRESS}
       - LCORE_INPUTBOX_ADDRESS=${LCORE_INPUTBOX_ADDRESS:-0x59b22D57D4f067708AB0c00552767405926dc768}
       - LCORE_NODE_URL=${LCORE_NODE_URL:-http://cartesi-node:10000}
-      - LCORE_ADMIN_PUBLIC_KEY=${LCORE_ADMIN_PUBLIC_KEY}
-      - LCORE_ADMIN_PRIVATE_KEY=${LCORE_ADMIN_PRIVATE_KEY}
+      - LCORE_PRIVATE_KEY=${LCORE_PRIVATE_KEY}
+      - LCORE_PUBLIC_KEY=${LCORE_PUBLIC_KEY}
+      - LCORE_PRIVATE_KEY_V2=${LCORE_PRIVATE_KEY_V2}
+      - LCORE_BATCH_ENABLED=1
       - LOG_LEVEL=${LOG_LEVEL:-info}
     restart: unless-stopped

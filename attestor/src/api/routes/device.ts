@@ -5,8 +5,9 @@
  * Devices use did:key for identity and JWS for signature verification.
  *
  * SECURITY MODEL:
- * - This route acts as a THIN RELAY - it encrypts but does NOT verify signatures
- * - All JWS verification happens inside Cartesi (fraud-provable)
+ * - Device signs a deterministic hash: sha256(canonical_json(payload) + did + timestamp)
+ * - Attestor recomputes hash and verifies device JWS (fail-fast pre-check)
+ * - Cartesi independently re-verifies the JWS over hash (fraud-provable)
  * - Inputs are encrypted before hitting the InputBox (privacy)
  * - Anyone can re-run Cartesi and verify every signature was valid
  *
@@ -21,10 +22,10 @@
 
 import type { IncomingMessage, ServerResponse } from 'http'
 import { parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
-import { isValidDIDKeyFormat } from '#src/api/services/did.ts'
+import { isValidDIDKeyFormat, parseDIDKey, verifyJWSOverHash } from '#src/api/services/did.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import { ethers, Wallet } from 'ethers'
-import { encryptDataForSubmission, encryptDataForSubmissionV2, isInputEncryptionConfigured, isV2Configured } from '#src/lcore/encryption.ts'
+import { encryptDataForSubmission, encryptDataForSubmissionV2, computeDataHash, isInputEncryptionConfigured, isV2Configured } from '#src/lcore/encryption.ts'
 import { SubmissionBatcher, type BatchableSubmission, type BatchFlushResult } from '#src/submission-batcher.ts'
 
 // Reuse L{CORE} configuration
@@ -150,8 +151,8 @@ function buildSubmission(
 	timestamp: number
 ): BatchableSubmission {
 	const encrypted = isV2Configured()
-		? encryptDataForSubmissionV2(data, deviceDid)
-		: encryptDataForSubmission(data)
+		? encryptDataForSubmissionV2(data, deviceDid, timestamp)
+		: encryptDataForSubmission(data, deviceDid, timestamp)
 
 	return {
 		action: 'device_attestation',
@@ -266,9 +267,14 @@ async function submitDeviceAttestationBatched(
  * POST /api/device/submit
  * Submit signed device sensor data
  *
- * NOTE: This endpoint does NOT verify the JWS signature.
- * Signature verification happens inside Cartesi (fraud-provable).
- * We only validate format here to fail fast on obviously bad requests.
+ * The device signs a deterministic hash of its payload:
+ *   data_hash = sha256(canonical_json(payload) + device_did + timestamp)
+ *
+ * The attestor:
+ * 1. Recomputes the same data_hash from the payload
+ * 2. Verifies the device's JWS over that hash (fail-fast pre-check)
+ * 3. Encrypts the payload and submits to Cartesi
+ * 4. Cartesi independently re-verifies the JWS (fraud-provable)
  */
 async function handleDeviceSubmit(
 	req: IncomingMessage,
@@ -304,10 +310,25 @@ async function handleDeviceSubmit(
 		return sendError(res, 400, 'timestamp is too old or in the future')
 	}
 
-	// Basic DID format validation only (no signature verification here)
-	// Full verification happens in Cartesi (fraud-provable)
+	// Validate DID format
 	if (!isValidDIDKeyFormat(body.did)) {
 		return sendError(res, 400, 'Invalid did:key format. Expected did:key:z... with secp256k1 key')
+	}
+
+	// Recompute the deterministic data_hash from the payload
+	// The device computed the same hash and signed it
+	const dataHash = computeDataHash(body.payload, body.did, body.timestamp)
+
+	// Verify the device's JWS over the data_hash (fail-fast pre-check)
+	// Cartesi will independently re-verify this (fraud-provable)
+	const pubKey = parseDIDKey(body.did)
+	if (!pubKey) {
+		return sendError(res, 400, 'Could not parse public key from did:key')
+	}
+
+	const jwsValid = verifyJWSOverHash(body.signature, dataHash, pubKey)
+	if (!jwsValid) {
+		return sendError(res, 401, 'Invalid device signature — JWS verification over data_hash failed')
 	}
 
 	// Submit via batcher or directly based on configuration
