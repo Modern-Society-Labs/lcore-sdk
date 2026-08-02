@@ -35,19 +35,20 @@ memory-bank/
 # Documentation content (separate repo)
 docs-content-lcore/
 
-# Internal security documentation
+# Internal docs
 SECURITY-ACCESS-CONTROL.md
-
-# Internal planning and pitch documents
+cartesi/ARCHITECTURE.md
 data-encryption-fix.md
-pensieve-protocol-pitch.docx
-pensieve-protocol-plan.md
 
 # Cartesi build artifacts
 .cartesi/
 .playwright-mcp/
 
-# Test scripts
+# All tests and test scripts
+tests/
+cartesi/src/__tests__/
 test-submit.mts
-tests/bench/
 check-inputs.mts
+
+# SDK v2 handoff package (local only)
+sdk-v2/
