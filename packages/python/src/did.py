@@ -151,6 +151,50 @@ def create_jws(payload: dict, private_key: bytes) -> str:
     return f"{header_b64}.{payload_b64}.{sig_b64}"
 
 
+def canonicalize_payload(payload: dict) -> str:
+    """
+    Produce canonical JSON for hashing: sorted keys, compact separators, UTF-8.
+
+    This must byte-match the attestor's canonicalizer so the device and attestor
+    compute the same data_hash. It matches RFC 8785 (JCS) for objects, strings,
+    booleans, null and integers.
+
+    CAVEAT: floating-point formatting can differ from the JavaScript canonicalizer
+    for edge cases. For guaranteed cross-SDK hash parity, send numeric sensor
+    values as integers or strings (e.g. "23.4"), not raw floats.
+    """
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def create_jws_over_hash(hash_hex: str, private_key: bytes) -> str:
+    """
+    Create a JWS (ES256K) whose payload segment is a raw hash string.
+
+    The device signs the deterministic data_hash directly — this is what the
+    attestor's verifyJWSOverHash checks — NOT the raw payload object.
+
+    Args:
+        hash_hex: The data_hash string to sign (64-char hex)
+        private_key: 32-byte secp256k1 private key
+
+    Returns:
+        JWS compact serialization (header.payload.signature)
+    """
+    header = {"alg": "ES256K", "typ": "JWT"}
+    header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":")).encode())
+    payload_b64 = _base64url_encode(hash_hex.encode())
+
+    signing_input = f"{header_b64}.{payload_b64}"
+    message_hash = hashlib.sha256(signing_input.encode()).digest()
+
+    priv = PrivateKey(private_key)
+    signature = priv.sign_recoverable(message_hash, hasher=None)
+    sig_bytes = signature[:64]  # r||s (coincurve emits low-s), drop recovery id
+    sig_b64 = _base64url_encode(sig_bytes)
+
+    return f"{header_b64}.{payload_b64}.{sig_b64}"
+
+
 def verify_jws(jws: str, payload: dict, public_key: bytes) -> bool:
     """
     Verify a JWS signature against a payload and public key.

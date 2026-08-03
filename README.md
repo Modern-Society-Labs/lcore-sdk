@@ -31,12 +31,13 @@ L{CORE} is a complete, self-hostable stack for device and data attestation. It c
 Device (did:key + secp256k1) → Attestor (TEE) → InputBox (on-chain) → Cartesi (RISC-V) → EVM
 ```
 
-1. **Device** generates a `did:key` identity and computes a deterministic hash:
+1. **Device** generates a `did:key` identity, a per-submission random `salt`, and computes a deterministic hash:
    ```
-   data_hash = sha256(JCS(payload) + device_did + timestamp)
+   data_hash = sha256(JCS(payload) + device_did + timestamp + salt)
    ```
+   The `salt` is sent to the attestor and stored **inside the encrypted blob** — it never goes on-chain. Because `device_did` and `timestamp` are public, the salt is what stops an observer from brute-forcing low-entropy sensor data (e.g. a temperature) out of the on-chain hash.
 2. **Device** signs `data_hash` as a JWS (ES256K / secp256k1)
-3. **Attestor** recomputes the hash, verifies the JWS (fail-fast), encrypts the payload, and submits to the Cartesi InputBox
+3. **Attestor** recomputes the hash (using the device's `salt`), verifies the JWS (fail-fast), encrypts the payload, and submits to the Cartesi InputBox
 4. **Cartesi** independently re-verifies the JWS over the hash inside a RISC-V VM — fully fraud-provable
 5. **Anyone** can re-run the Cartesi node and verify every device signature was valid
 
@@ -73,23 +74,38 @@ const privateKey = crypto.getRandomValues(new Uint8Array(32))
 const publicKey = secp256k1.getPublicKey(privateKey, true)
 const did = publicKeyToDIDKey(publicKey) // did:key:zQ3sh...
 
-// 2. Build payload
+// 2. Build payload + per-submission random salt
 const payload = { temperature: 22.5, humidity: 65, location: 'lab-1' }
 const timestamp = Math.floor(Date.now() / 1000)
+const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)))
 
-// 3. Compute deterministic hash
+// 3. Compute deterministic, salted hash
 const canonical = canonicalize(payload)
-const combined = canonical + did + String(timestamp)
+const combined = canonical + did + String(timestamp) + salt
 const dataHash = bytesToHex(sha256(new TextEncoder().encode(combined)))
 
 // 4. Sign hash as JWS (ES256K)
 const jws = createJWSOverHash(dataHash, privateKey)
 
-// 5. Submit to attestor
+// 5. Submit to attestor (include the salt so it can reproduce the hash)
 await fetch('https://your-attestor/api/device/submit', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ did, payload, signature: jws, timestamp }),
+  body: JSON.stringify({ did, payload, signature: jws, timestamp, salt }),
+})
+```
+
+> **Tip:** the `@localecore/lcore-sdk` `DeviceIdentity.sign(payload)` does steps 2–4 for you and returns `{ did, payload, signature, timestamp, salt }` ready to POST.
+
+```typescript
+// Equivalent using the SDK:
+import { DeviceIdentity } from '@localecore/lcore-sdk'
+const device = DeviceIdentity.generate()
+const submission = device.sign({ temperature: 22.5, humidity: 65 })
+await fetch('https://your-attestor/api/device/submit', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(submission),
 })
 ```
 
@@ -182,8 +198,9 @@ POST /api/device/submit
 |-------|------|-------------|
 | `did` | string | Device DID (`did:key:zQ3sh...`) |
 | `payload` | object | Sensor data (any JSON) |
-| `signature` | string | JWS over `sha256(JCS(payload) + did + timestamp)` |
+| `signature` | string | JWS over `sha256(JCS(payload) + did + timestamp + salt)` |
 | `timestamp` | number | Unix epoch seconds |
+| `salt` | string | Per-submission random salt, 32 hex chars (16 bytes). Folded into the signed hash; stored only inside the encrypted blob, never on-chain. |
 
 ### Inspect Endpoints
 

@@ -100,6 +100,8 @@ interface DeviceSubmission {
 	payload: Record<string, unknown>
 	signature: string
 	timestamp: number
+	/** Per-submission random salt (hex, 16 bytes) folded into the signed hash */
+	salt: string
 }
 
 // ============= Batch Flush Function =============
@@ -173,11 +175,12 @@ function buildSubmission(
 	deviceDid: string,
 	data: Record<string, unknown>,
 	signature: string,
-	timestamp: number
+	timestamp: number,
+	saltHex: string
 ): BatchableSubmission {
 	const encrypted = isV2Configured()
-		? encryptDataForSubmissionV2(data, deviceDid, timestamp)
-		: encryptDataForSubmission(data, deviceDid, timestamp)
+		? encryptDataForSubmissionV2(data, deviceDid, timestamp, saltHex)
+		: encryptDataForSubmission(data, deviceDid, timestamp, saltHex)
 
 	return {
 		action: 'device_attestation',
@@ -198,7 +201,8 @@ async function submitDeviceAttestationDirect(
 	deviceDid: string,
 	data: Record<string, unknown>,
 	signature: string,
-	timestamp: number
+	timestamp: number,
+	saltHex: string
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
 	if (!LCORE_ENABLED) {
 		return { success: false, error: 'L{CORE} is not enabled' }
@@ -219,7 +223,7 @@ async function submitDeviceAttestationDirect(
 		const wallet = getWallet()
 		const inputBox = new ethers.Contract(LCORE_INPUTBOX_ADDRESS, INPUT_BOX_ABI, wallet)
 
-		const payload = buildSubmission(deviceDid, data, signature, timestamp)
+		const payload = buildSubmission(deviceDid, data, signature, timestamp, saltHex)
 		const inputData = hexEncode(payload)
 
 		const tx = await inputBox.addInput(LCORE_DAPP_ADDRESS, inputData)
@@ -249,7 +253,8 @@ async function submitDeviceAttestationBatched(
 	deviceDid: string,
 	data: Record<string, unknown>,
 	signature: string,
-	timestamp: number
+	timestamp: number,
+	saltHex: string
 ): Promise<{ success: boolean; data?: unknown; error?: string }> {
 	if (!LCORE_ENABLED) {
 		return { success: false, error: 'L{CORE} is not enabled' }
@@ -266,7 +271,7 @@ async function submitDeviceAttestationBatched(
 		}
 	}
 
-	const submission = buildSubmission(deviceDid, data, signature, timestamp)
+	const submission = buildSubmission(deviceDid, data, signature, timestamp, saltHex)
 	const batcher = getBatcher()
 	const flushResult = await batcher.add(submission)
 
@@ -335,6 +340,12 @@ async function handleDeviceSubmit(
 		return sendError(res, 400, 'timestamp is too old or in the future')
 	}
 
+	// Validate the device-supplied salt (folded into the signed hash for privacy).
+	// Required: without it the on-chain hash is brute-forceable for low-entropy data.
+	if (typeof body.salt !== 'string' || !/^[0-9a-fA-F]{32}$/.test(body.salt)) {
+		return sendError(res, 400, 'salt is required and must be 32 hex characters (16 bytes)')
+	}
+
 	// Validate DID format
 	if (!isValidDIDKeyFormat(body.did)) {
 		return sendError(res, 400, 'Invalid did:key format. Expected did:key:z... with secp256k1 key')
@@ -342,7 +353,7 @@ async function handleDeviceSubmit(
 
 	// Recompute the deterministic data_hash from the payload
 	// The device computed the same hash and signed it
-	const dataHash = computeDataHash(body.payload, body.did, body.timestamp)
+	const dataHash = computeDataHash(body.payload, body.did, body.timestamp, body.salt)
 
 	// Verify the device's JWS over the data_hash (fail-fast pre-check)
 	// Cartesi will independently re-verify this (fraud-provable)
@@ -372,7 +383,8 @@ async function handleDeviceSubmit(
 		body.did,
 		body.payload,
 		body.signature,
-		body.timestamp
+		body.timestamp,
+		body.salt
 	)
 
 	if (!result.success) {

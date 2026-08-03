@@ -8,7 +8,8 @@
 import { secp256k1 } from '@noble/curves/secp256k1'
 import { sha256 } from '@noble/hashes/sha256'
 import { base58btc } from 'multiformats/bases/base58'
-import { randomBytes } from '@noble/hashes/utils'
+import { randomBytes, bytesToHex } from '@noble/hashes/utils'
+import canonicalize from 'canonicalize'
 
 // Multicodec prefix for secp256k1-pub: 0xe7 0x01
 const SECP256K1_MULTICODEC = new Uint8Array([0xe7, 0x01])
@@ -64,6 +65,30 @@ export function createJWS(payload: Record<string, unknown>, privateKey: Uint8Arr
 
   // Base64url encode signature
   const sigB64 = base64urlEncode(sigBytes)
+
+  return `${headerB64}.${payloadB64}.${sigB64}`
+}
+
+/**
+ * Create a JWS (ES256K) whose payload segment is a raw hash string.
+ *
+ * This is what the attestor verifies (verifyJWSOverHash): the device signs the
+ * deterministic data_hash directly, NOT the raw payload object.
+ *
+ * @param hash - The data_hash string to sign (64-char hex)
+ * @param privateKey - 32-byte secp256k1 private key
+ * @returns JWS compact serialization string
+ */
+export function createJWSOverHash(hash: string, privateKey: Uint8Array): string {
+  const header = { alg: 'ES256K', typ: 'JWT' }
+  const headerB64 = base64urlEncode(JSON.stringify(header))
+  const payloadB64 = base64urlEncode(hash)
+
+  const signingInput = `${headerB64}.${payloadB64}`
+  const msgHash = sha256(new TextEncoder().encode(signingInput))
+
+  const signature = secp256k1.sign(msgHash, privateKey)
+  const sigB64 = base64urlEncode(signature.toCompactRawBytes())
 
   return `${headerB64}.${payloadB64}.${sigB64}`
 }
@@ -142,23 +167,37 @@ export class DeviceIdentity {
   /**
    * Sign a payload and return submission-ready data.
    *
+   * Computes the deterministic, salted data_hash the attestor expects:
+   *   data_hash = sha256(JCS(payload) + did + timestamp + saltHex)
+   * and signs that hash (not the raw payload). The random salt is returned so
+   * the attestor can reproduce the hash; it is never published on-chain, which
+   * prevents brute-forcing low-entropy sensor data from the public hash.
+   *
    * @param payload - Sensor data to sign
-   * @returns Object with did, payload, signature, and timestamp
+   * @returns Object with did, payload, signature, timestamp, and salt
    */
   sign(payload: Record<string, unknown>): {
     did: string
     payload: Record<string, unknown>
     signature: string
     timestamp: number
+    salt: string
   } {
-    const signature = createJWS(payload, this.privateKey)
     const timestamp = Math.floor(Date.now() / 1000)
+    const saltHex = bytesToHex(randomBytes(16))
+
+    const canonical = canonicalize(payload) ?? ''
+    const combined = canonical + this.did + String(timestamp) + saltHex
+    const dataHash = bytesToHex(sha256(new TextEncoder().encode(combined)))
+
+    const signature = createJWSOverHash(dataHash, this.privateKey)
 
     return {
       did: this.did,
       payload,
       signature,
       timestamp,
+      salt: saltHex,
     }
   }
 

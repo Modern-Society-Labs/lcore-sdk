@@ -134,6 +134,7 @@ class LCore:
         payload: dict[str, Any],
         signature: str,
         timestamp: int,
+        salt: str,
     ) -> SubmissionResult:
         """
         Submit pre-signed device data to L{CORE}.
@@ -146,6 +147,8 @@ class LCore:
             payload: Sensor data
             signature: JWS compact serialization
             timestamp: Unix timestamp
+            salt: The 32-char hex salt the external signer folded into the
+                signed data_hash (sha256(JCS(payload)+did+timestamp+salt))
 
         Returns:
             SubmissionResult with tx_hash and block_number on success
@@ -157,6 +160,7 @@ class LCore:
             "payload": payload,
             "signature": signature,
             "timestamp": timestamp,
+            "salt": salt,
         }
 
         try:

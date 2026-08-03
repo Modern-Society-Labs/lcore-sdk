@@ -7,12 +7,13 @@ Provides DeviceIdentity class for generating and managing device credentials.
 import os
 import json
 import time
+import hashlib
 from dataclasses import dataclass
 from typing import Optional
 
 from coincurve import PrivateKey
 
-from .did import public_key_to_did_key, create_jws
+from .did import public_key_to_did_key, create_jws_over_hash, canonicalize_payload
 
 
 @dataclass
@@ -108,26 +109,39 @@ class DeviceIdentity:
         """
         Sign a payload and return submission-ready data.
 
+        Computes the deterministic, salted data_hash the attestor expects:
+            data_hash = sha256(JCS(payload) + did + timestamp + salt_hex)
+        and signs that hash (not the raw payload). The random salt is returned so
+        the attestor can reproduce the hash; it never goes on-chain, which stops
+        low-entropy sensor data being brute-forced from the public hash.
+
         Args:
             payload: Sensor data dictionary to sign
 
         Returns:
-            Dictionary with did, payload, signature, and timestamp
+            Dictionary with did, payload, signature, timestamp, and salt
 
         Example:
             >>> device = DeviceIdentity.generate()
-            >>> signed = device.sign({"temperature": 23.4})
-            >>> signed.keys()
-            dict_keys(['did', 'payload', 'signature', 'timestamp'])
+            >>> signed = device.sign({"temperature": 23})
+            >>> sorted(signed.keys())
+            ['did', 'payload', 'salt', 'signature', 'timestamp']
         """
-        signature = create_jws(payload, self.private_key)
         timestamp = int(time.time())
+        salt_hex = os.urandom(16).hex()
+
+        canonical = canonicalize_payload(payload)
+        combined = canonical + self.did + str(timestamp) + salt_hex
+        data_hash = hashlib.sha256(combined.encode()).hexdigest()
+
+        signature = create_jws_over_hash(data_hash, self.private_key)
 
         return {
             "did": self.did,
             "payload": payload,
             "signature": signature,
             "timestamp": timestamp,
+            "salt": salt_hex,
         }
 
     def to_hex(self) -> str:

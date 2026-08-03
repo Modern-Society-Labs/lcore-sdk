@@ -52,3 +52,7 @@ check-inputs.mts
 
 # SDK v2 handoff package (local only)
 sdk-v2/
+
+# Python
+__pycache__/
+*.pyc
