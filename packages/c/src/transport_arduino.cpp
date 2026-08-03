@@ -29,19 +29,19 @@ extern "C" {
 }
 
 extern "C" int lcore_submit(const char* attestor_url, const char* did,
-                            const char* payload_json, const char* jws) {
-    if (!attestor_url || !did || !payload_json || !jws) return LCORE_ERR_INVALID;
+                            const char* payload_json, const char* jws,
+                            uint64_t timestamp, const char* salt_hex) {
+    if (!attestor_url || !did || !payload_json || !jws || !salt_hex) return LCORE_ERR_INVALID;
 
     /* Build endpoint URL */
     char url[512];
     snprintf(url, sizeof(url), "%s/api/device/submit", attestor_url);
 
-    /* Build JSON body */
+    /* Build JSON body. timestamp and salt MUST match those used in the hash. */
     char body[8192];
-    uint64_t ts = lcore_timestamp();
     int body_len = snprintf(body, sizeof(body),
-        "{\"did\":\"%s\",\"payload\":%s,\"signature\":\"%s\",\"timestamp\":%llu}",
-        did, payload_json, jws, (unsigned long long)ts);
+        "{\"did\":\"%s\",\"payload\":%s,\"signature\":\"%s\",\"timestamp\":%llu,\"salt\":\"%s\"}",
+        did, payload_json, jws, (unsigned long long)timestamp, salt_hex);
     if (body_len < 0 || (size_t)body_len >= sizeof(body)) return LCORE_ERR_BUFFER;
 
 #if defined(ESP8266) || defined(ESP32)

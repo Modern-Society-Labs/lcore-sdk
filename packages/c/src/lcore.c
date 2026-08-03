@@ -276,6 +276,80 @@ cleanup:
 }
 
 /* ============================================================================
+ * Salted data_hash + hash signing
+ *
+ * The attestor verifies the device JWS over a deterministic, salted hash:
+ *   data_hash = sha256( canonical(payload) + did + timestamp + salt_hex )
+ * The device signs THAT hash string (not the raw payload). The salt is sent to
+ * the attestor and stored inside the encrypted blob — never on-chain — so that
+ * low-entropy sensor data cannot be brute-forced from the public hash.
+ * ============================================================================ */
+
+/* Lowercase-hex encode `len` bytes into `out` (needs 2*len + 1 bytes). */
+static void lcore_bytes_to_hex(const uint8_t* in, size_t len, char* out) {
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < len; i++) {
+        out[i * 2]     = hex[(in[i] >> 4) & 0x0F];
+        out[i * 2 + 1] = hex[in[i] & 0x0F];
+    }
+    out[len * 2] = '\0';
+}
+
+int lcore_random_salt_hex(char* salt_hex_out, size_t size) {
+    if (!salt_hex_out) return LCORE_ERR_INVALID;
+    if (size < 33) return LCORE_ERR_BUFFER; /* 16 bytes -> 32 hex + NUL */
+
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+
+    int ret = LCORE_ERR_CRYPTO;
+    uint8_t salt[16];
+
+    if (mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, NULL, 0) != 0) goto cleanup;
+    if (mbedtls_ctr_drbg_random(&ctr_drbg, salt, sizeof(salt)) != 0) goto cleanup;
+
+    lcore_bytes_to_hex(salt, sizeof(salt), salt_hex_out);
+    ret = LCORE_OK;
+
+cleanup:
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+    mbedtls_entropy_free(&entropy);
+    return ret;
+}
+
+int lcore_compute_data_hash(const char* payload_json, const char* did,
+                            uint64_t timestamp, const char* salt_hex,
+                            char* hash_out, size_t hash_size) {
+    if (!payload_json || !did || !salt_hex || !hash_out) return LCORE_ERR_INVALID;
+    if (hash_size < 65) return LCORE_ERR_BUFFER; /* 32 bytes -> 64 hex + NUL */
+
+    /* Pre-image: payload_json + did + timestamp + salt_hex.
+     * IMPORTANT: payload_json MUST be RFC 8785 (JCS) canonical JSON — keys
+     * sorted, no insignificant whitespace — or this hash will not match the
+     * attestor's, which canonicalizes the received payload. Canonicalization
+     * is the caller's responsibility (this minimal SDK does not parse JSON). */
+    char combined[4096];
+    int n = snprintf(combined, sizeof(combined), "%s%s%llu%s",
+                     payload_json, did, (unsigned long long)timestamp, salt_hex);
+    if (n < 0 || (size_t)n >= sizeof(combined)) return LCORE_ERR_BUFFER;
+
+    uint8_t hash[32];
+    mbedtls_sha256((const uint8_t*)combined, (size_t)n, hash, 0);
+    lcore_bytes_to_hex(hash, 32, hash_out);
+    return LCORE_OK;
+}
+
+int lcore_create_jws_over_hash(const char* hash_hex, const uint8_t privkey[32],
+                               char* jws_out, size_t jws_size) {
+    /* The JWS payload segment is the hash string itself. lcore_create_jws
+     * base64url-encodes its input and signs header.payload, which is exactly
+     * what verifyJWSOverHash expects when given the data_hash. */
+    return lcore_create_jws(hash_hex, privkey, jws_out, jws_size);
+}
+
+/* ============================================================================
  * HTTP Submission
  * ============================================================================ */
 
@@ -286,19 +360,20 @@ uint64_t lcore_timestamp(void) {
 #ifdef LCORE_USE_CURL
 
 int lcore_submit(const char* attestor_url, const char* did,
-                 const char* payload_json, const char* jws) {
-    if (!attestor_url || !did || !payload_json || !jws) return LCORE_ERR_INVALID;
+                 const char* payload_json, const char* jws,
+                 uint64_t timestamp, const char* salt_hex) {
+    if (!attestor_url || !did || !payload_json || !jws || !salt_hex) return LCORE_ERR_INVALID;
 
     /* Build endpoint URL */
     char url[512];
     snprintf(url, sizeof(url), "%s/api/device/submit", attestor_url);
 
-    /* Build JSON body */
+    /* Build JSON body. timestamp and salt MUST be the same values that were
+     * folded into the signed data_hash, or the attestor will reject the JWS. */
     char body[8192];
-    uint64_t ts = lcore_timestamp();
     int body_len = snprintf(body, sizeof(body),
-        "{\"did\":\"%s\",\"payload\":%s,\"signature\":\"%s\",\"timestamp\":%llu}",
-        did, payload_json, jws, (unsigned long long)ts);
+        "{\"did\":\"%s\",\"payload\":%s,\"signature\":\"%s\",\"timestamp\":%llu,\"salt\":\"%s\"}",
+        did, payload_json, jws, (unsigned long long)timestamp, salt_hex);
     if (body_len < 0 || (size_t)body_len >= sizeof(body)) return LCORE_ERR_BUFFER;
 
     /* Initialize curl */
@@ -324,8 +399,10 @@ int lcore_submit(const char* attestor_url, const char* did,
 
 /* Stub when curl is not available */
 int lcore_submit(const char* attestor_url, const char* did,
-                 const char* payload_json, const char* jws) {
+                 const char* payload_json, const char* jws,
+                 uint64_t timestamp, const char* salt_hex) {
     (void)attestor_url; (void)did; (void)payload_json; (void)jws;
+    (void)timestamp; (void)salt_hex;
     /* User must implement HTTP POST or compile with -DLCORE_USE_CURL */
     return LCORE_ERR_HTTP;
 }
@@ -345,11 +422,23 @@ int lcore_sign_and_submit(const char* attestor_url, const uint8_t privkey[32],
     int ret = lcore_did_from_privkey(privkey, did, sizeof(did));
     if (ret != LCORE_OK) return ret;
 
-    /* Create JWS */
-    char jws[4096];
-    ret = lcore_create_jws(payload_json, privkey, jws, sizeof(jws));
+    /* Timestamp and per-submission random salt (both bound into the hash) */
+    uint64_t ts = lcore_timestamp();
+
+    char salt_hex[33];
+    ret = lcore_random_salt_hex(salt_hex, sizeof(salt_hex));
     if (ret != LCORE_OK) return ret;
 
-    /* Submit */
-    return lcore_submit(attestor_url, did, payload_json, jws);
+    /* Compute the salted data_hash. payload_json MUST be JCS-canonical. */
+    char data_hash[65];
+    ret = lcore_compute_data_hash(payload_json, did, ts, salt_hex, data_hash, sizeof(data_hash));
+    if (ret != LCORE_OK) return ret;
+
+    /* Sign the hash string (not the raw payload) */
+    char jws[4096];
+    ret = lcore_create_jws_over_hash(data_hash, privkey, jws, sizeof(jws));
+    if (ret != LCORE_OK) return ret;
+
+    /* Submit with the same timestamp + salt used in the hash */
+    return lcore_submit(attestor_url, did, payload_json, jws, ts, salt_hex);
 }

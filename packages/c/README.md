@@ -39,20 +39,30 @@ int main() {
     // Your device's 32-byte secp256k1 private key
     uint8_t privkey[32] = { /* ... */ };
 
-    // Sensor data as JSON
-    const char* payload = "{\"temperature\":23.4,\"humidity\":65}";
+    // Sensor data as JSON.
+    // MUST be JCS-canonical: keys sorted, no insignificant whitespace, or the
+    // device and attestor will compute different hashes. This SDK does not
+    // canonicalize for you.
+    const char* payload = "{\"humidity\":65,\"temperature\":23.4}";
 
-    // Option 1: One-liner
+    // Option 1: One-liner (generates salt, computes the hash, signs, submits)
     int ret = lcore_sign_and_submit("http://localhost:8001", privkey, payload);
 
     // Option 2: Step by step
     char did[128];
     lcore_did_from_privkey(privkey, did, sizeof(did));
 
-    char jws[4096];
-    lcore_create_jws(payload, privkey, jws, sizeof(jws));
+    uint64_t ts = lcore_timestamp();
+    char salt[33];
+    lcore_random_salt_hex(salt, sizeof(salt));
 
-    lcore_submit("http://localhost:8001", did, payload, jws);
+    char data_hash[65];
+    lcore_compute_data_hash(payload, did, ts, salt, data_hash, sizeof(data_hash));
+
+    char jws[4096];
+    lcore_create_jws_over_hash(data_hash, privkey, jws, sizeof(jws));
+
+    lcore_submit("http://localhost:8001", did, payload, jws, ts, salt);
 
     return 0;
 }
@@ -69,15 +79,28 @@ int lcore_did_from_privkey(const uint8_t privkey[32], char* did_out, size_t did_
 // Generate did:key from public key
 int lcore_did_from_pubkey(const uint8_t pubkey[33], char* did_out, size_t did_size);
 
-// Create JWS signature
+// Low-level JWS signer (signs the given string; used by the two paths below)
 int lcore_create_jws(const char* payload_json, const uint8_t privkey[32],
                      char* jws_out, size_t jws_size);
 
-// Submit to attestor
-int lcore_submit(const char* attestor_url, const char* did,
-                 const char* payload_json, const char* jws);
+// Generate a per-submission random salt (16 bytes -> 32 hex chars)
+int lcore_random_salt_hex(char* salt_hex_out, size_t size);
 
-// Convenience: sign and submit in one call
+// Compute the salted data_hash = sha256(canonical(payload)+did+timestamp+salt)
+int lcore_compute_data_hash(const char* payload_json, const char* did,
+                            uint64_t timestamp, const char* salt_hex,
+                            char* hash_out, size_t hash_size);
+
+// Sign the data_hash string (what the attestor verifies)
+int lcore_create_jws_over_hash(const char* hash_hex, const uint8_t privkey[32],
+                               char* jws_out, size_t jws_size);
+
+// Submit to attestor (timestamp + salt must match those used in the hash)
+int lcore_submit(const char* attestor_url, const char* did,
+                 const char* payload_json, const char* jws,
+                 uint64_t timestamp, const char* salt_hex);
+
+// Convenience: generate salt, compute hash, sign, and submit in one call
 int lcore_sign_and_submit(const char* attestor_url, const uint8_t privkey[32],
                           const char* payload_json);
 ```

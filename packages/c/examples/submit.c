@@ -44,22 +44,40 @@ int main(int argc, char** argv) {
     }
     printf("Device DID: %s\n\n", did);
 
-    /* Step 2: Create sensor data payload */
-    const char* payload = "{\"temperature\":23.4,\"humidity\":65,\"location\":\"office-1\"}";
+    /* Step 2: Create sensor data payload.
+     * MUST be JCS-canonical JSON: keys sorted, no insignificant whitespace,
+     * or the device and attestor will compute different hashes. */
+    const char* payload = "{\"humidity\":65,\"location\":\"office-1\",\"temperature\":23.4}";
     printf("Payload: %s\n\n", payload);
 
-    /* Step 3: Create JWS signature */
+    /* Step 3: Timestamp + per-submission random salt (both bound into the hash) */
+    uint64_t ts = lcore_timestamp();
+    char salt[33];
+    ret = lcore_random_salt_hex(salt, sizeof(salt));
+    if (ret != LCORE_OK) {
+        printf("Error generating salt: %d\n", ret);
+        return 1;
+    }
+
+    /* Step 4: Compute the salted data_hash and sign the hash (not the payload) */
+    char data_hash[65];
+    ret = lcore_compute_data_hash(payload, did, ts, salt, data_hash, sizeof(data_hash));
+    if (ret != LCORE_OK) {
+        printf("Error computing data_hash: %d\n", ret);
+        return 1;
+    }
+
     char jws[4096];
-    ret = lcore_create_jws(payload, DEVICE_PRIVKEY, jws, sizeof(jws));
+    ret = lcore_create_jws_over_hash(data_hash, DEVICE_PRIVKEY, jws, sizeof(jws));
     if (ret != LCORE_OK) {
         printf("Error creating JWS: %d\n", ret);
         return 1;
     }
     printf("JWS: %.50s...\n\n", jws);
 
-    /* Step 4: Submit to attestor */
+    /* Step 5: Submit to attestor (same ts + salt that went into the hash) */
     printf("Submitting to %s...\n", attestor_url);
-    ret = lcore_submit(attestor_url, did, payload, jws);
+    ret = lcore_submit(attestor_url, did, payload, jws, ts, salt);
     if (ret != LCORE_OK) {
         printf("Error submitting: %d\n", ret);
         printf("(Make sure attestor is running and curl is enabled)\n");

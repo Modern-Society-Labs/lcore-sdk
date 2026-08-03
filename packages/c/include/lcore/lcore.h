@@ -12,20 +12,19 @@
  *   - MbedTLS 3.x (secp256k1, SHA256)
  *   - libcurl (optional, for HTTP)
  *
- * Usage:
+ * Usage (convenience — handles salt, hash, and signing for you):
  *   uint8_t privkey[32] = { ... };  // Your device private key
+ *   // payload MUST be JCS-canonical JSON: keys sorted, no extra whitespace
+ *   const char* payload = "{\"humidity\":65,\"temperature\":23.4}";
+ *   lcore_sign_and_submit("http://localhost:8001", privkey, payload);
  *
- *   // Generate DID from private key
- *   char did[128];
- *   lcore_did_from_privkey(privkey, did, sizeof(did));
- *
- *   // Sign sensor data
- *   const char* payload = "{\"temperature\":23.4}";
- *   char jws[1024];
- *   lcore_create_jws(payload, privkey, jws, sizeof(jws));
- *
- *   // Submit to attestor
- *   lcore_submit("http://localhost:8001", did, payload, jws);
+ * Or step-by-step:
+ *   char did[128];  lcore_did_from_privkey(privkey, did, sizeof(did));
+ *   uint64_t ts = lcore_timestamp();
+ *   char salt[33]; lcore_random_salt_hex(salt, sizeof(salt));
+ *   char hash[65]; lcore_compute_data_hash(payload, did, ts, salt, hash, sizeof(hash));
+ *   char jws[4096]; lcore_create_jws_over_hash(hash, privkey, jws, sizeof(jws));
+ *   lcore_submit("http://localhost:8001", did, payload, jws, ts, salt);
  */
 
 #ifndef LCORE_H
@@ -66,9 +65,14 @@ int lcore_did_from_privkey(const uint8_t privkey[32], char* did_out, size_t did_
 int lcore_did_from_pubkey(const uint8_t pubkey[33], char* did_out, size_t did_size);
 
 /**
- * Create JWS compact serialization (ES256K algorithm).
+ * Create JWS compact serialization (ES256K) over an arbitrary string.
  *
- * @param payload_json  JSON payload string to sign
+ * NOTE: For device submissions, do NOT sign the raw payload — the attestor
+ * verifies the JWS over the salted data_hash. Use lcore_create_jws_over_hash
+ * (or lcore_sign_and_submit) instead. This function is kept as the low-level
+ * signer that both paths build on.
+ *
+ * @param payload_json  String to sign (base64url-encoded into the JWS payload)
  * @param privkey       32-byte secp256k1 private key
  * @param jws_out       Output buffer for JWS string
  * @param jws_size      Size of output buffer
@@ -78,19 +82,68 @@ int lcore_create_jws(const char* payload_json, const uint8_t privkey[32],
                      char* jws_out, size_t jws_size);
 
 /**
+ * Generate a per-submission random salt as lowercase hex (16 bytes -> 32 chars).
+ *
+ * @param salt_hex_out  Output buffer for the hex salt (NUL-terminated)
+ * @param size          Size of output buffer (must be >= 33)
+ * @return              LCORE_OK on success, error code on failure
+ */
+int lcore_random_salt_hex(char* salt_hex_out, size_t size);
+
+/**
+ * Compute the deterministic, salted data_hash the attestor verifies:
+ *   data_hash = sha256( payload_json + did + timestamp + salt_hex )
+ *
+ * IMPORTANT: payload_json MUST be RFC 8785 (JCS) canonical JSON — keys sorted,
+ * no insignificant whitespace — or the hash will not match the attestor's.
+ * This minimal SDK does not parse/canonicalize JSON; that is the caller's job.
+ *
+ * @param payload_json  Canonical JSON payload string
+ * @param did           Device DID string (did:key:z...)
+ * @param timestamp     Unix timestamp (must match the value submitted)
+ * @param salt_hex      Hex salt from lcore_random_salt_hex
+ * @param hash_out      Output buffer for the 64-char hex hash (NUL-terminated)
+ * @param hash_size     Size of output buffer (must be >= 65)
+ * @return              LCORE_OK on success, error code on failure
+ */
+int lcore_compute_data_hash(const char* payload_json, const char* did,
+                            uint64_t timestamp, const char* salt_hex,
+                            char* hash_out, size_t hash_size);
+
+/**
+ * Create a JWS (ES256K) whose payload segment is the data_hash string.
+ * This is what the attestor's verifyJWSOverHash checks.
+ *
+ * @param hash_hex   The data_hash string to sign (64-char hex)
+ * @param privkey    32-byte secp256k1 private key
+ * @param jws_out    Output buffer for JWS string
+ * @param jws_size   Size of output buffer
+ * @return           LCORE_OK on success, error code on failure
+ */
+int lcore_create_jws_over_hash(const char* hash_hex, const uint8_t privkey[32],
+                               char* jws_out, size_t jws_size);
+
+/**
  * Submit signed device data to L{CORE} attestor.
  *
  * Sends POST request to /api/device/submit with:
- *   { "did": "...", "payload": {...}, "signature": "...", "timestamp": ... }
+ *   { "did": "...", "payload": {...}, "signature": "...",
+ *     "timestamp": ..., "salt": "..." }
+ *
+ * timestamp and salt_hex MUST be the same values folded into the signed
+ * data_hash, or the attestor rejects the JWS.
  *
  * @param attestor_url  Base URL of attestor (e.g., "http://localhost:8001")
  * @param did           Device DID string (did:key:z...)
- * @param payload_json  JSON payload that was signed
- * @param jws           JWS signature string
+ * @param payload_json  Canonical JSON payload that was signed
+ * @param jws           JWS signature string (over the data_hash)
+ * @param timestamp     Unix timestamp used in the hash
+ * @param salt_hex      Hex salt used in the hash (32 chars)
  * @return              LCORE_OK on success, error code on failure
  */
 int lcore_submit(const char* attestor_url, const char* did,
-                 const char* payload_json, const char* jws);
+                 const char* payload_json, const char* jws,
+                 uint64_t timestamp, const char* salt_hex);
 
 /**
  * Convenience function: sign and submit in one call.
