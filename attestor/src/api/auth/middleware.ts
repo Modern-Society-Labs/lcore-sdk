@@ -110,8 +110,10 @@ async function authenticateJWT(
 					return { success: false, error: 'Session has been revoked', status: 401 }
 				}
 			} else {
-				// Try to find sessions with v2 (bcrypt) hash - requires iterating
-				// This is slower but only needed during migration period
+				// Not found via v1 hash — check v2 (bcrypt) sessions (migration period).
+				// A configured DB means every issued token has a session row, so the
+				// absence of a match here must FAIL CLOSED: a deleted/expired session
+				// row invalidates its still-signed JWT before the token's own expiry.
 				const { data: bcryptSessions } = await supabase
 					.from('admin_sessions')
 					.select('id, token_hash, hash_version, revoked_at')
@@ -126,23 +128,22 @@ async function authenticateJWT(
 					revoked_at: string | null
 				}> | null
 
-				if(bcryptSession?.length) {
-					// Check each bcrypt session (parallel for performance)
-					const matches = await Promise.all(
+				const matches = bcryptSession?.length
+					? await Promise.all(
 						bcryptSession.map(async s => ({
 							session: s,
 							matches: await verifySessionTokenHash(token, s.token_hash, s.hash_version),
 						}))
 					)
+					: []
 
-					const matchingSession = matches.find(m => m.matches)
-					if(!matchingSession) {
-						return { success: false, error: 'Session not found', status: 401 }
-					}
+				const matchingSession = matches.find(m => m.matches)
+				if(!matchingSession) {
+					return { success: false, error: 'Session not found', status: 401 }
+				}
 
-					if(matchingSession.session.revoked_at) {
-						return { success: false, error: 'Session has been revoked', status: 401 }
-					}
+				if(matchingSession.session.revoked_at) {
+					return { success: false, error: 'Session has been revoked', status: 401 }
 				}
 			}
 		}

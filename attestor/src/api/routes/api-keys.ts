@@ -21,6 +21,29 @@ import {
 } from '#src/api/auth/index.ts'
 
 const auth = createAuthMiddleware()
+// Minting or re-permissioning API keys is an admin operation.
+const authAdmin = createAuthMiddleware({ requiredRole: 'admin' })
+
+// Permissions that must not be grantable by a non-super_admin, otherwise a
+// lower-privileged admin could mint a key that escalates beyond their own role.
+const ELEVATED_PERMISSIONS = new Set(['*', 'write:config', 'admin:users', 'admin:sessions'])
+
+/**
+ * Returns an error message if the caller's role may not grant the requested
+ * permissions, or null if the grant is allowed.
+ */
+function checkGrantablePermissions(role: string, permissions: string[]): string | null {
+	if(role === 'super_admin') {
+		return null
+	}
+
+	const elevated = permissions.filter(p => ELEVATED_PERMISSIONS.has(p))
+	if(elevated.length) {
+		return `Only super_admin can grant elevated permissions: ${elevated.join(', ')}`
+	}
+
+	return null
+}
 
 /**
  * GET /api/api-keys
@@ -50,7 +73,7 @@ export async function handleCreateApiKey(
 	req: IncomingMessage,
 	res: ServerResponse
 ): Promise<void> {
-	const authReq = await auth(req, res)
+	const authReq = await authAdmin(req, res)
 	if(!authReq) {
 		return
 	}
@@ -72,6 +95,11 @@ export async function handleCreateApiKey(
 		const invalid = body.permissions.filter(p => !validPermissions.includes(p))
 		if(invalid.length) {
 			return sendError(res, 400, `Invalid permissions: ${invalid.join(', ')}`)
+		}
+
+		const elevationError = checkGrantablePermissions(authReq.admin.role, body.permissions)
+		if(elevationError) {
+			return sendError(res, 403, elevationError)
 		}
 	}
 
@@ -147,7 +175,7 @@ export async function handleUpdateApiKey(
 	res: ServerResponse,
 	keyId: string
 ): Promise<void> {
-	const authReq = await auth(req, res)
+	const authReq = await authAdmin(req, res)
 	if(!authReq) {
 		return
 	}
@@ -163,6 +191,11 @@ export async function handleUpdateApiKey(
 	const invalid = body.permissions.filter(p => !validPermissions.includes(p))
 	if(invalid.length) {
 		return sendError(res, 400, `Invalid permissions: ${invalid.join(', ')}`)
+	}
+
+	const elevationError = checkGrantablePermissions(authReq.admin.role, body.permissions)
+	if(elevationError) {
+		return sendError(res, 403, elevationError)
 	}
 
 	const result = await updateApiKeyPermissions(keyId, authReq.admin.sub, body.permissions)
