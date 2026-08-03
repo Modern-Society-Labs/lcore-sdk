@@ -12,6 +12,7 @@
 
 import { stringToHex } from 'viem';
 import { processOutputSync } from './utils/output';
+import { isDevelopmentMode } from './config';
 
 // ============= Types =============
 
@@ -86,15 +87,24 @@ const AUTHORIZED_SUBMITTERS = new Set<string>(
 
 /**
  * Check if a sender is authorized to submit requests.
- * Returns true if whitelist is empty (development mode) or sender is whitelisted.
+ *
+ * Fails CLOSED: if the whitelist is empty we reject everything in production.
+ * An empty whitelist only allows all senders in development mode, or when the
+ * operator has explicitly opted in via ALLOW_ALL_SENDERS=true (e.g. a public
+ * permissionless deployment). This prevents a missing/typo'd AUTHORIZED_SENDERS
+ * env var from silently opening the rollup to arbitrary submitters.
  *
  * CUSTOMIZE: Modify this function for custom authorization logic
  */
 export function isAuthorizedSender(sender: string): boolean {
-  // If whitelist is empty, allow all (development mode)
   if (AUTHORIZED_SUBMITTERS.size === 0) {
-    console.log('Warning: Whitelist is empty, allowing all senders (development mode)');
-    return true;
+    const allowAll = process.env.ALLOW_ALL_SENDERS === 'true' || isDevelopmentMode();
+    if (allowAll) {
+      console.warn('Warning: sender whitelist is empty, allowing all senders (dev/ALLOW_ALL_SENDERS)');
+      return true;
+    }
+    console.error('Rejecting submission: AUTHORIZED_SENDERS is empty in production. Set AUTHORIZED_SENDERS or ALLOW_ALL_SENDERS=true.');
+    return false;
   }
   return AUTHORIZED_SUBMITTERS.has(sender.toLowerCase());
 }

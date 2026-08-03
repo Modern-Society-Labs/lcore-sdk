@@ -35,6 +35,31 @@ const LCORE_INPUTBOX_ADDRESS = getEnvVariable('LCORE_INPUTBOX_ADDRESS') || '0x59
 const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
 const BATCH_ENABLED = getEnvVariable('LCORE_BATCH_ENABLED') !== '0'
 
+// Replay protection: reject re-submission of an identical signed data_hash
+// within the freshness window. data_hash = sha256(payload + did + timestamp),
+// so an intercepted submission is byte-identical on replay. In-memory and
+// per-process — adequate for a single attestor; back with a shared store
+// (as auth nonces already are) for multi-node deployments.
+const REPLAY_TTL_MS = 10 * 60 * 1000 // covers the ±5min timestamp window
+const MAX_REPLAY_ENTRIES = 100_000
+const seenDataHashes = new Map<string, number>() // data_hash -> expiry (epoch ms)
+
+function isReplayedDataHash(dataHash: string): boolean {
+	const now = Date.now()
+	// Bounded lazy purge of expired entries when the cache hits its cap
+	if (seenDataHashes.size >= MAX_REPLAY_ENTRIES) {
+		for (const [h, exp] of seenDataHashes) {
+			if (exp <= now) seenDataHashes.delete(h)
+		}
+	}
+	const existing = seenDataHashes.get(dataHash)
+	if (existing !== undefined && existing > now) {
+		return true
+	}
+	seenDataHashes.set(dataHash, now + REPLAY_TTL_MS)
+	return false
+}
+
 // InputBox ABI (minimal)
 const INPUT_BOX_ABI = [
 	'function addInput(address _dapp, bytes calldata _input) external returns (bytes32)'
@@ -329,6 +354,13 @@ async function handleDeviceSubmit(
 	const jwsValid = verifyJWSOverHash(body.signature, dataHash, pubKey)
 	if (!jwsValid) {
 		return sendError(res, 401, 'Invalid device signature — JWS verification over data_hash failed')
+	}
+
+	// Replay protection: reject an identical signed submission seen within the
+	// freshness window (checked only after the signature is verified, so an
+	// attacker cannot poison the cache with unsigned hashes).
+	if (isReplayedDataHash(dataHash)) {
+		return sendError(res, 409, 'Duplicate submission — this signed data_hash was already accepted')
 	}
 
 	// Submit via batcher or directly based on configuration

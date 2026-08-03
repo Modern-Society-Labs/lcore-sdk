@@ -14,6 +14,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'http'
+import { createAuthMiddleware } from '#src/api/auth/middleware.ts'
 import { parseJsonBody, sendError, sendJson } from '#src/api/utils/http.ts'
 import { getEnvVariable } from '#src/utils/env.ts'
 import {
@@ -28,6 +29,13 @@ import {
 
 const LCORE_NODE_URL = getEnvVariable('LCORE_NODE_URL') || 'http://127.0.0.1:10000'
 const LCORE_ENABLED = getEnvVariable('LCORE_ENABLED') !== '0'
+
+// Re-encrypting decrypted device data for a caller-supplied key turns
+// admin-encrypted ciphertext into requester-decryptable plaintext, so it
+// must be authorized. Raw (still-encrypted) reads remain open; only the
+// re-encryption path is gated. Requesters without operator credentials must
+// use the grant-gated /api/inspect/attestation-data endpoint instead.
+const requireReadAuth = createAuthMiddleware({ allowApiKey: true })
 
 // Revocation confirmation depth — how many inputs must pass after
 // a revocation before we stop serving that grant's data.
@@ -223,8 +231,13 @@ async function handleDeviceAttestations(
 		return sendError(res, 400, 'device_did is required')
 	}
 
-	if (body.requester_public_key && !validateNaClPublicKey(body.requester_public_key)) {
-		return sendError(res, 400, 'Invalid requester_public_key — expected base64-encoded 32-byte NaCl public key')
+	if (body.requester_public_key) {
+		if (!validateNaClPublicKey(body.requester_public_key)) {
+			return sendError(res, 400, 'Invalid requester_public_key — expected base64-encoded 32-byte NaCl public key')
+		}
+		// Gate the re-encryption path behind authentication (JWT or API key).
+		const authReq = await requireReadAuth(req, res)
+		if (!authReq) return
 	}
 
 	const result = await queryCartesiInspect<DeviceAttestationsResponse>(
@@ -285,8 +298,13 @@ async function handleDeviceLatest(
 		return sendError(res, 400, 'device_did is required')
 	}
 
-	if (body.requester_public_key && !validateNaClPublicKey(body.requester_public_key)) {
-		return sendError(res, 400, 'Invalid requester_public_key — expected base64-encoded 32-byte NaCl public key')
+	if (body.requester_public_key) {
+		if (!validateNaClPublicKey(body.requester_public_key)) {
+			return sendError(res, 400, 'Invalid requester_public_key — expected base64-encoded 32-byte NaCl public key')
+		}
+		// Gate the re-encryption path behind authentication (JWT or API key).
+		const authReq = await requireReadAuth(req, res)
+		if (!authReq) return
 	}
 
 	const result = await queryCartesiInspect<DeviceAttestationRecord & { error?: string }>(
