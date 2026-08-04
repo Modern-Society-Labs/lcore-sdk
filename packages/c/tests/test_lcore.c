@@ -186,6 +186,63 @@ static int test_timestamp_is_reasonable(void) {
 }
 
 /* ============================================================================
+ * Salted Hash (H-2) Tests
+ * ============================================================================ */
+
+/* Cross-implementation vector: this exact hash is also produced by the attestor
+ * (Node canonicalize+sha256), the TS SDK, and Python. If this fails, the C SDK
+ * has drifted from the attestor and submissions will be rejected. */
+static int test_compute_data_hash_matches_vector(void) {
+    char hash[65];
+    int ret = lcore_compute_data_hash(
+        "{\"humidity\":65,\"location\":\"office-1\",\"temperature\":23.4}",
+        "did:key:zQ3shExampleDeviceKeyAbc123", 1730000000ULL,
+        "00112233445566778899aabbccddeeff", hash, sizeof(hash));
+    return ret == LCORE_OK &&
+        strcmp(hash, "0525af834930b1b82a6d01aafdc0dca68ec958ad524902c8bf4f1b25eadf36a6") == 0;
+}
+
+static int test_salt_hex_is_32_lowercase_hex(void) {
+    char salt[33];
+    if (lcore_random_salt_hex(salt, sizeof(salt)) != LCORE_OK) return 0;
+    if (strlen(salt) != 32) return 0;
+    for (int i = 0; i < 32; i++) {
+        char c = salt[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return 0;
+    }
+    return 1;
+}
+
+static int test_salt_hex_rejects_small_buffer(void) {
+    char salt[16];
+    return lcore_random_salt_hex(salt, sizeof(salt)) == LCORE_ERR_BUFFER;
+}
+
+static int test_different_salt_changes_hash(void) {
+    char h1[65], h2[65];
+    const char* p = "{\"a\":1}";
+    lcore_compute_data_hash(p, "did:key:zT", 1000, "00000000000000000000000000000000", h1, sizeof(h1));
+    lcore_compute_data_hash(p, "did:key:zT", 1000, "ffffffffffffffffffffffffffffffff", h2, sizeof(h2));
+    return strcmp(h1, h2) != 0;
+}
+
+static int test_data_hash_rejects_small_buffer(void) {
+    char hash[32]; /* < 65 */
+    return lcore_compute_data_hash("{\"a\":1}", "did:key:zT", 1, "00", hash, sizeof(hash)) == LCORE_ERR_BUFFER;
+}
+
+static int test_jws_over_hash_has_three_parts(void) {
+    char hash[65];
+    lcore_compute_data_hash("{\"a\":1}", "did:key:zT", 1,
+        "00112233445566778899aabbccddeeff", hash, sizeof(hash));
+    char jws[4096];
+    if (lcore_create_jws_over_hash(hash, TEST_PRIVKEY, jws, sizeof(jws)) != LCORE_OK) return 0;
+    int dots = 0;
+    for (const char* c = jws; *c; c++) if (*c == '.') dots++;
+    return dots == 2;
+}
+
+/* ============================================================================
  * Main
  * ============================================================================ */
 
@@ -218,6 +275,14 @@ int main(void) {
 
     printf("\nTimestamp Tests:\n");
     TEST(timestamp_is_reasonable);
+
+    printf("\nSalted Hash (H-2) Tests:\n");
+    TEST(compute_data_hash_matches_vector);
+    TEST(salt_hex_is_32_lowercase_hex);
+    TEST(salt_hex_rejects_small_buffer);
+    TEST(different_salt_changes_hash);
+    TEST(data_hash_rejects_small_buffer);
+    TEST(jws_over_hash_has_three_parts);
 
     printf("\n===================\n");
     printf("Results: %d/%d passed\n\n", tests_passed, tests_run);

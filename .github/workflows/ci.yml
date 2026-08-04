@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attestor-tests:
+    name: Attestor tests (H-2 salted hash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # node --experimental-strip-types (>= 22.6)
+      - name: Install deps
+        working-directory: attestor
+        run: npm ci
+      - name: Run tests
+        working-directory: attestor
+        run: npm test
+
+  c-sdk-tests:
+    name: C SDK tests (mbedtls)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain + mbedtls
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential libmbedtls-dev
+      - name: Build + test
+        working-directory: packages/c
+        run: |
+          cmake -B build -DLCORE_USE_CURL=OFF
+          cmake --build build
+          ./build/test_lcore
