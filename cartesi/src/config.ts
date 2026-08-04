@@ -140,10 +140,11 @@ export function isVerboseLogging(): boolean {
 // ============= Output Configuration =============
 
 /**
- * Output mode for query responses.
+ * Output mode for query responses. Applies to INSPECT reports only (see
+ * processOutputSync in router.ts) — never to advance notices/vouchers.
  * Options:
- *   'encrypted' - All outputs encrypted (default, requires attestor to decrypt)
- *   'raw'       - All outputs raw (for public data use cases)
+ *   'raw'       - All outputs raw (DEFAULT; V1 privacy comes from encrypted blobs)
+ *   'encrypted' - Inspect reports encrypted (requires attestor to decrypt)
  *   'custom'    - Developer implements their own outputHandler()
  *
  * Set LCORE_OUTPUT_MODE in environment to customize.
