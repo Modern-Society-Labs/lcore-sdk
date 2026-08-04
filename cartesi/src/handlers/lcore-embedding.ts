@@ -151,7 +151,7 @@ export const handleSubmitEmbeddingCommitment = async (
     db.run(
       `INSERT INTO embedding_commitments
        (attested_input_ref, model_id, embedding_hash, nonce, commitment, submitted_by, input_index, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'))`,
       [
         p.attested_input_ref,
         p.model_id,
@@ -160,6 +160,8 @@ export const handleSubmitEmbeddingCommitment = async (
         p.commitment,
         sender,
         requestData.metadata.input_index,
+        // Deterministic: block production time (seconds), not wall clock.
+        requestData.metadata.timestamp,
       ]
     );
 

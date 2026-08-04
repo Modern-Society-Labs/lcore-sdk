@@ -167,7 +167,7 @@ export const handleIdentityAttestation = async (
 			 (user_did, provider, country_code, verification_level, verified,
 			  issued_at, expires_at, attestor_signature, session_id,
 			  input_index, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'))`,
 			[
 				p.user_did,
 				p.provider,
@@ -179,6 +179,8 @@ export const handleIdentityAttestation = async (
 				p.attestor_signature,
 				p.session_id,
 				requestData.metadata.input_index,
+				// Deterministic: block production time (seconds), not wall clock.
+				requestData.metadata.timestamp,
 			]
 		);
 

@@ -116,8 +116,11 @@ export function setEncryptionKey(
     throw new Error(`Invalid public key: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  // Use provided key ID or generate one
-  const resolvedKeyId = keyId ?? `key_${inputIndex}_${Date.now()}`;
+  // Use provided key ID or derive a deterministic one from the input index.
+  // MUST NOT include wall-clock time: key_id is written to state AND emitted in
+  // the set/rotate_encryption_key notice (a committed output), so a Date.now()
+  // component would make both non-deterministic. input_index is unique per input.
+  const resolvedKeyId = keyId ?? `key_${inputIndex}`;
 
   // Deprecate any existing active keys
   db.run(`UPDATE encryption_config SET status = 'deprecated' WHERE status = 'active'`);
@@ -291,22 +294,25 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 // ============= Determinism Note =============
 
 /**
- * IMPORTANT: randomBytes() uses crypto.getRandomValues() which is
- * NON-DETERMINISTIC by design. This is acceptable for encryption because:
+ * WARNING: encryptOutput() is NON-DETERMINISTIC. randomBytes()/nacl.box.keyPair()
+ * use crypto.getRandomValues(), so the SAME plaintext yields DIFFERENT ciphertext
+ * bytes on every call.
  *
- * 1. The nonce is included in the output (deterministic given the output)
- * 2. The ephemeral keypair is included in the output (public key)
- * 3. The same plaintext encrypted twice will produce different ciphertext,
- *    but both will decrypt to the same plaintext
+ * This is SAFE ONLY for INSPECT REPORTS, which are not part of the rollup's
+ * on-chain output claim. That is exactly (and only) how it is wired today:
+ * processOutputSync() is applied on the inspect path (see router.ts), never to
+ * advance-path outputs.
  *
- * For Cartesi's fraud-proof verification:
- * - The encrypted OUTPUT is what's verified, not the encryption process
- * - Given the same encrypted output, decryption is deterministic
- * - The randomness doesn't affect state transitions, only output format
+ * It is NOT SAFE for anything emitted during `advance`:
+ * - Notices and vouchers are hashed into the epoch's output Merkle root. Two
+ *   honest validators re-executing the same input would produce different
+ *   ciphertext -> different output hashes -> fraud proofs CANNOT converge.
+ * - Storing random ciphertext in SQLite likewise diverges the state hash.
  *
- * If absolute determinism is required (unlikely), you could:
- * 1. Use the input hash + counter as a seed for nonce generation
- * 2. Use a deterministic ephemeral key derivation scheme
- * But this would weaken security (no forward secrecy).
+ * DO NOT call encryptOutput/encryptResponse on an advance handler's `response`,
+ * notice, voucher, or any value written to state. If encrypted advance output is
+ * ever required, derive the nonce and ephemeral key DETERMINISTICALLY from the
+ * input (e.g. HKDF over input_hash + a counter) — accepting the loss of forward
+ * secrecy — or perform the encryption off-chain in the attestor, not in the VM.
  */
 

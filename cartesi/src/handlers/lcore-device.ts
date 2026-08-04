@@ -166,7 +166,7 @@ export const handleDeviceAttestation = async (
     db.run(
       `INSERT INTO device_attestations
        (device_did, data_hash, encrypted_data, jws, encryption_key_id, timestamp, source, input_index, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'))`,
       [
         p.device_did,
         p.data_hash,
@@ -176,6 +176,9 @@ export const handleDeviceAttestation = async (
         p.timestamp,
         p.source || 'relay',
         requestData.metadata.input_index,
+        // Deterministic: block production time (seconds), not wall clock.
+        // datetime(?, 'unixepoch') preserves the same 'YYYY-MM-DD HH:MM:SS' format.
+        requestData.metadata.timestamp,
       ]
     );
 
