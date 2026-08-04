@@ -484,7 +484,7 @@ export function getDataRecordsForComputation(
     `SELECT id, entity_id, source_type, source_record_id, record_type, amount, timestamp, category, is_pending, metadata, created_at
      FROM data_records
      WHERE entity_id = ? AND source_type = ? AND timestamp >= ? AND is_pending = 0
-     ORDER BY timestamp ASC`,
+     ORDER BY timestamp ASC, id ASC`,
     [entityId, sourceType, dateStr]
   );
 

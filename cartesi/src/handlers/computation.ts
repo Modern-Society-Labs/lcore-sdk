@@ -118,7 +118,11 @@ function performComputation(
       const income = byType['income'] || 0;
       const expense = Math.abs(byType['expense'] || 0);
 
-      const ratio = expense !== 0 ? income / expense : income > 0 ? Infinity : 0;
+      // Avoid Infinity (which becomes the string "Infinity" in notices and is
+      // ill-defined when bound into SQLite); clamp the no-expense case to a
+      // finite sentinel so outputs/state stay well-defined and deterministic.
+      const MAX_RATIO = 1e9;
+      const ratio = expense !== 0 ? income / expense : income > 0 ? MAX_RATIO : 0;
 
       return {
         resultValue: ratio,

@@ -2,7 +2,7 @@
   "name": "@localecore/cartesi-dapp",
   "version": "1.0.0",
   "description": "Generalized Cartesi SQLite Framework for Multi-Source Data Ingestion",
-  "main": "dist/index.js",
+  "main": "dist/lcore-main.js",
   "dependencies": {
     "@noble/curves": "^1.3.0",
     "@noble/hashes": "^1.3.0",
@@ -40,7 +40,7 @@
     "compile": "tsc && esbuild ./src/index.ts --bundle --outfile=dist/index.js --platform=node --target=node20",
     "compile:lcore": "esbuild ./src/lcore-main.ts --bundle --outfile=dist/lcore-main.js --platform=node --target=node20",
     "compile:rollup-server": "esbuild ./src/rollup-server.ts --bundle --outfile=dist/rollup-server.js --platform=node --target=node20",
-    "start": "ts-node src/index.ts",
+    "start": "ts-node src/lcore-main.ts",
     "start:lcore": "ts-node src/lcore-main.ts",
     "start:rollup-server": "ts-node src/rollup-server.ts",
     "start:servers": "node dist/rollup-server.js & sleep 2 && node dist/lcore-main.js",

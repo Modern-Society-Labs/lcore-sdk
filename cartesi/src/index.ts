@@ -1,8 +1,15 @@
 /**
- * Cartesi SQLite Framework - Entry Point
+ * Cartesi SQLite Framework - GENERIC TEMPLATE (not the deployed entrypoint)
  *
- * This is the main entry point for the Cartesi rollup application.
- * It initializes the database, configures the router, and runs the main event loop.
+ * ⚠️  This is the generic framework template that L{CORE} was built from. The
+ * DEPLOYED application is `src/lcore-main.ts` (the Docker image runs
+ * `lcore-main.js`; see Dockerfile). This file and its example handlers
+ * (create_entity, compute, submit_proof, approve, …) are ILLUSTRATIVE and are
+ * NOT determinism-hardened: they write wall-clock time (`new Date()`) into state
+ * and make wall-clock accept/reject decisions (see handlers/proof.ts), which
+ * breaks fraud-proof convergence. Do NOT use this entrypoint in production —
+ * use lcore-main. If you build a real app on this template, source time from
+ * `data.metadata.timestamp` (block time) as lcore-main's handlers do.
  *
  * CUSTOMIZATION GUIDE:
  * 1. Import your handlers from handlers/index.ts

@@ -601,11 +601,24 @@ export function updateFreshnessScores(currentInput: number): number {
     // Calculate age in "input units" (treating inputs as time proxy)
     const age = currentInput - attestedAt;
 
-    // Exponential decay: freshness = 100 * 0.5^(age/halfLife)
-    const freshness = Math.max(
-      minFreshness,
-      Math.floor(100 * Math.pow(0.5, age / halfLife))
-    );
+    // Deterministic integer decay approximating 100 * 0.5^(age/halfLife).
+    // Math.pow with a fractional exponent is implementation-defined (libm/engine
+    // dependent), so it would diverge across validator builds and break fraud
+    // proofs once this is written to state. Integer math is exact everywhere:
+    // whole half-lives halve the base, then linearly interpolate within the
+    // current half-life — all via integer operations.
+    let decayed: number;
+    if (age <= 0 || halfLife <= 0) {
+      decayed = 100;
+    } else {
+      const halvings = Math.floor(age / halfLife);
+      let base = 100;
+      for (let i = 0; i < halvings && base > 0; i++) base = Math.floor(base / 2);
+      const next = Math.floor(base / 2);
+      const rem = age - halvings * halfLife; // integer in [0, halfLife)
+      decayed = base - Math.floor(((base - next) * rem) / halfLife);
+    }
+    const freshness = Math.max(minFreshness, decayed);
 
     db.run(
       `UPDATE attestations SET freshness_score = ? WHERE id = ?`,
