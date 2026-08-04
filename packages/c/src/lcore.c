@@ -17,6 +17,18 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/base64.h>
+#include <mbedtls/version.h>
+
+/* SHA-256 wrapper. mbedtls 3.x's mbedtls_sha256() returns int and is current;
+ * on 2.x that 4-arg form is deprecated in favour of mbedtls_sha256_ret(). This
+ * keeps the build warning-free on both major versions. */
+static int lcore_sha256(const uint8_t* input, size_t ilen, uint8_t output[32]) {
+#if defined(MBEDTLS_VERSION_NUMBER) && (MBEDTLS_VERSION_NUMBER >= 0x03000000)
+    return mbedtls_sha256(input, ilen, output, 0);
+#else
+    return mbedtls_sha256_ret(input, ilen, output, 0);
+#endif
+}
 
 /* Optional: libcurl for HTTP */
 #ifdef LCORE_USE_CURL
@@ -199,7 +211,7 @@ int lcore_create_jws(const char* payload_json, const uint8_t privkey[32],
 
     /* SHA256 hash of signing input */
     uint8_t hash[32];
-    mbedtls_sha256((const uint8_t*)signing_input, input_len, hash, 0);
+    lcore_sha256((const uint8_t*)signing_input, (size_t)input_len, hash);
 
     /* Initialize ECP group and MPI for key */
     mbedtls_ecp_group grp;
@@ -336,7 +348,7 @@ int lcore_compute_data_hash(const char* payload_json, const char* did,
     if (n < 0 || (size_t)n >= sizeof(combined)) return LCORE_ERR_BUFFER;
 
     uint8_t hash[32];
-    mbedtls_sha256((const uint8_t*)combined, (size_t)n, hash, 0);
+    lcore_sha256((const uint8_t*)combined, (size_t)n, hash);
     lcore_bytes_to_hex(hash, 32, hash_out);
     return LCORE_OK;
 }
