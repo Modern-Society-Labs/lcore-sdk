@@ -26,6 +26,24 @@ jobs:
         working-directory: attestor
         run: npm test
 
+  cartesi-tests:
+    name: Cartesi tests (chain clock / determinism)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        working-directory: cartesi
+        run: npm ci
+      - name: Typecheck
+        working-directory: cartesi
+        run: npx tsc --noEmit
+      - name: Run tests
+        working-directory: cartesi
+        run: npm test
+
   c-sdk-tests:
     name: C SDK tests (mbedtls)
     runs-on: ubuntu-latest

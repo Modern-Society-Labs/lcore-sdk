@@ -91,19 +91,33 @@ secrecy — or encrypt off-chain in the attestor. See the note in `encryption.ts
 
 ---
 
-## Design proposal — inspect-path expiry
+## Inspect-path expiry — the chain clock (IMPLEMENTED)
 
-### Problem
+### Problem — and it was worse than "non-reproducible"
 
-Some inspect handlers decide "is this still valid?" using the **host wall clock**:
+Three identity inspect handlers decided "is this still valid?" by asking the machine
+for the current time:
 
-- `lcore-identity.ts:235, 336, 376` — `const now = Math.floor(Date.now()/1000)`,
+- `lcore-identity.ts` (`handleInspectIdentity`, `handleInspectIdentityByCountry`,
+  `handleInspectIdentityStats`) — `const now = Math.floor(Date.now()/1000)`,
   then filter `expires_at > now` (identity attestations carry a unix-seconds
-  `expires_at`).
+  `expires_at`, set by the attestor from a *real* host clock as `now + oneYear`).
 
-Inspect is a read (not fraud-proved), so this is **not a consensus break**. But it is
-**non-reproducible**: the same query returns different results depending on when/where
-it runs, and it reaches for a host clock inside code that is otherwise clock-free.
+The Cartesi machine has no real clock. Measured on an actual machine
+(cartesi CLI 1.5.0, sdk 0.9.0, riscv64) by building a minimal app that printed it:
+
+```
+DATE_NOW_MS=3337
+ISO=1970-01-01T00:00:03.933Z
+SECONDS=3
+```
+
+So the comparison was effectively `expires_at > 3` against a real timestamp of
+~1.79 billion — **unconditionally true**. The expiry filter never filtered anything:
+**expired identity attestations were reported as valid, forever.**
+
+This is not a consensus break (inspect is not fraud-proved) but it was a genuine
+correctness bug, not merely a reproducibility wart as first assessed.
 
 Note the codebase is already **inconsistent** here: access-grant expiry
 (`check_access`, `attestation_data`) is evaluated against a caller-supplied
@@ -118,12 +132,7 @@ uses the host clock.
 | **B. Store last block time in state** | maintain a singleton `last_block_timestamp`, updated every advance; inspect compares `expires_at > last_block_timestamp` | deterministic given the state; reflects chain time; no host clock; no caller trust | one tiny state write per advance; "now" lags to the latest processed block (fine for expiry semantics) |
 | **C. Caller passes the time** | add a `current_time`/`current_input` inspect param (as `check_access` already does) | explicit; matches existing access pattern | caller must supply it; a caller could pass a false time — but it only fools their own read |
 
-### Recommendation — **B**, with a nod to C's precedent
-
-Store the block timestamp of the most recent advance input in a one-row state table
-(e.g. `chain_clock(last_block_timestamp INTEGER)`), updated at the top of the router's
-advance path from `data.metadata.timestamp`. Have the identity inspect handlers read
-that value instead of `Date.now()`.
+### Chosen: **B** — the chain clock
 
 Why B over C for identity: `expires_at` is an absolute unix timestamp, so the natural
 "now" is chain time — B gives that deterministically and without trusting the caller,
@@ -131,13 +140,43 @@ whereas C would require every reader to supply a trustworthy clock. (C remains f
 where it's already used — index-based grant expiry — because the unit there is an
 input index the caller legitimately tracks.)
 
-Cost is negligible (one `UPDATE` per advance) and it removes the last host-clock
-dependency from query results. It also composes with a future "expire on read"
-or "sweep expired on advance" feature, since chain time is then available in state.
+### How it works
 
-**Status:** proposal only — not yet implemented. Implementing B is mechanical:
-add the singleton table + one update in the advance path + swap three `Date.now()`
-reads in `lcore-identity.ts`.
+1. **`chain_clock` table** (`lcore-db.ts`, created in `initLCoreSchema`) — a single
+   row (`id = 1`, enforced by a `CHECK`) holding `last_block_timestamp` and
+   `last_input_index`.
+2. **`recordChainTime(blockTimestamp, inputIndex)`** is called once per advance in
+   `lcore-main.ts`, **before** dispatching to the handler, using
+   `data.metadata.timestamp` — the block production time carried on every input.
+3. **`getChainTime()`** returns that value. The three identity inspect handlers call
+   it instead of `Date.now()`.
+
+Properties worth knowing:
+
+- **Rejected inputs don't move the clock.** Cartesi rolls state back when a handler
+  returns `reject`, so the write is discarded with everything else that input did.
+  A rejected input never happened, as far as state is concerned.
+- **`getChainTime()` returns 0 before any advance.** Safe by construction: every
+  time-filtered record is itself created by an advance, so an unset clock means
+  there is nothing to filter.
+- **"Now" means the last input's block time, not real-time-now.** If the chain is
+  idle for an hour, the value is an hour old. Immaterial for credentials measured in
+  months, and it is the same clock the rest of the rollup reasons about.
+- **Deterministic.** The value lives in state and comes from the input, so any
+  replay reproduces it exactly.
+
+### Rule going forward
+
+> **Never call `Date.now()` or `new Date()` inside the Cartesi machine.**
+> Advance handlers: use `data.metadata.timestamp`.
+> Inspect handlers: use `getChainTime()`.
+
+### Tests
+
+`test/chain-clock.test.ts` (runs under `npm test`) covers the singleton behaviour,
+the expiry filtering, and a regression guard asserting that an expired record *would*
+have passed against the raw machine clock (proving the bug was real) but does *not*
+pass against chain time (proving the fix holds).
 
 ---
 

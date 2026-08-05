@@ -20,6 +20,7 @@ import {
 	InspectQuery,
 } from '../router';
 import { getDatabase } from '../db';
+import { getChainTime } from '../lcore-db';
 import { isValidDIDKey } from '../crypto/jws';
 
 // ============= Types =============
@@ -234,7 +235,13 @@ export const handleInspectIdentity = async (
 
 	try {
 		const db = getDatabase();
-		const now = Math.floor(Date.now() / 1000);
+		// Chain time (block timestamp of the last processed input), NOT Date.now().
+		// The Cartesi machine's clock starts at the 1970 epoch and only ticks while
+		// processing inputs, so in-machine Date.now() returns a few seconds past
+		// 1970. Comparing that against a real `expires_at` made every expiry check
+		// unconditionally true — expired identities reported as valid. See
+		// getChainTime() in lcore-db.ts.
+		const now = getChainTime();
 
 		let sql = `SELECT id, user_did, provider, country_code, verification_level,
 		                  verified, issued_at, expires_at, attestor_signature, session_id,
@@ -335,7 +342,13 @@ export const handleInspectIdentityByCountry = async (
 ): Promise<unknown> => {
 	try {
 		const db = getDatabase();
-		const now = Math.floor(Date.now() / 1000);
+		// Chain time (block timestamp of the last processed input), NOT Date.now().
+		// The Cartesi machine's clock starts at the 1970 epoch and only ticks while
+		// processing inputs, so in-machine Date.now() returns a few seconds past
+		// 1970. Comparing that against a real `expires_at` made every expiry check
+		// unconditionally true — expired identities reported as valid. See
+		// getChainTime() in lcore-db.ts.
+		const now = getChainTime();
 
 		let sql = `SELECT country_code, COUNT(*) as count
 		           FROM identity_attestations
@@ -375,7 +388,13 @@ export const handleInspectIdentityStats = async (
 ): Promise<unknown> => {
 	try {
 		const db = getDatabase();
-		const now = Math.floor(Date.now() / 1000);
+		// Chain time (block timestamp of the last processed input), NOT Date.now().
+		// The Cartesi machine's clock starts at the 1970 epoch and only ticks while
+		// processing inputs, so in-machine Date.now() returns a few seconds past
+		// 1970. Comparing that against a real `expires_at` made every expiry check
+		// unconditionally true — expired identities reported as valid. See
+		// getChainTime() in lcore-db.ts.
+		const now = getChainTime();
 
 		const totalResult = db.exec('SELECT COUNT(*) FROM identity_attestations');
 		const total = (totalResult[0]?.values[0]?.[0] as number) ?? 0;

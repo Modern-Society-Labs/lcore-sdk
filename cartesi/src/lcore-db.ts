@@ -332,12 +332,114 @@ export function initLCoreSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_embedding_commitment_ref ON embedding_commitments(attested_input_ref);
     CREATE INDEX IF NOT EXISTS idx_embedding_commitment_model ON embedding_commitments(model_id);
     CREATE INDEX IF NOT EXISTS idx_embedding_commitment_hash ON embedding_commitments(commitment);
+
+    -- ============= CHAIN CLOCK =============
+    --
+    -- Single-row table holding the block production time of the most recent
+    -- advance input this machine has processed. This is the ONLY valid source
+    -- of "current time" for inspect (read-only) queries.
+    --
+    -- WHY THIS EXISTS: the Cartesi machine has no real clock. Its internal
+    -- clock starts at 0 (the 1970 epoch) and only ticks while inputs are being
+    -- processed, deliberately, so that re-execution is deterministic. Measured
+    -- on a real machine (cartesi CLI 1.5.0 / sdk 0.9.0):
+    --
+    --     Date.now()            -> 3337
+    --     new Date().toISOString() -> 1970-01-01T00:00:03.933Z
+    --
+    -- So any in-machine Date.now() compared against a real unix timestamp is
+    -- unconditionally wrong. Advance handlers avoid this by using
+    -- metadata.timestamp off the input, but inspect queries receive no
+    -- metadata at all -- hence this table, which mirrors that block time into
+    -- state where inspect can read it.
+    --
+    -- The single row is enforced by a fixed primary key (id = 1).
+    CREATE TABLE IF NOT EXISTS chain_clock (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      last_block_timestamp INTEGER NOT NULL,
+      last_input_index INTEGER NOT NULL
+    );
   `);
 
   // Initialize encryption schema (separate table)
   initEncryptionSchema();
 
   console.log('L{CORE} SDK schema initialized');
+}
+
+// ============= Chain Clock =============
+//
+// The Cartesi machine cannot read a real clock — doing so would make execution
+// non-deterministic and break fraud proofs, so the platform deliberately gives
+// the machine a clock that starts at 0 (1970-01-01) and only advances while
+// inputs are being processed. Verified empirically on a real machine:
+//
+//     DATE_NOW_MS=3337
+//     ISO=1970-01-01T00:00:03.933Z
+//
+// Advance handlers get real time from `data.metadata.timestamp` (the block
+// production time carried on every input). Inspect handlers get NO metadata,
+// so they have no time source of their own. These helpers bridge that gap:
+// every advance records the block time into state, and inspect reads it back.
+//
+// This keeps query results deterministic (the value lives in state, so any
+// replay reproduces it) AND correct (it is genuine chain time, not 1970).
+
+/**
+ * Record the block production time of an advance input.
+ *
+ * Call this once per advance, BEFORE dispatching to the handler, so that any
+ * handler or subsequent inspect query observes the current block time.
+ *
+ * Rejected inputs: Cartesi rolls the machine back to its pre-input state when a
+ * handler returns 'reject', so a write made here is discarded along with
+ * everything else that input did. The clock therefore only advances on ACCEPTED
+ * inputs, which is the desired behaviour — a rejected input never happened as
+ * far as state is concerned.
+ *
+ * Monotonicity: block timestamps are non-decreasing on any sane chain, so this
+ * value only moves forward. We do not enforce that here; if a chain ever
+ * delivered an out-of-order timestamp we would rather mirror the chain than
+ * silently diverge from it.
+ *
+ * @param blockTimestamp - Unix seconds from `data.metadata.timestamp`
+ * @param inputIndex - The input's index, stored for debugging/provenance
+ */
+export function recordChainTime(blockTimestamp: number, inputIndex: number): void {
+  const db = getDatabase();
+  db.run(
+    `INSERT INTO chain_clock (id, last_block_timestamp, last_input_index)
+     VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       last_block_timestamp = excluded.last_block_timestamp,
+       last_input_index = excluded.last_input_index`,
+    [blockTimestamp, inputIndex]
+  );
+}
+
+/**
+ * Get the current chain time: the block timestamp of the most recently
+ * processed advance input, in unix seconds.
+ *
+ * USE THIS INSTEAD OF `Date.now()` ANYWHERE INSIDE THE CARTESI MACHINE.
+ *
+ * Returns 0 if no advance input has been processed yet. That is safe in
+ * practice: all time-filtered records (identity attestations, access grants)
+ * are themselves created by advance inputs, so if the clock is unset there is
+ * nothing for it to filter. Callers that need to distinguish "no inputs yet"
+ * from "epoch" can check for 0 explicitly.
+ *
+ * Note the semantics: this is the time of the last input the rollup saw, not
+ * real-time-right-now. If the chain is idle for an hour, this value is an hour
+ * old. For expiry checks on credentials measured in months that is immaterial,
+ * and it is the same clock every other part of the rollup reasons about.
+ *
+ * @returns Unix seconds, or 0 if no advance has been processed
+ */
+export function getChainTime(): number {
+  const db = getDatabase();
+  const result = db.exec('SELECT last_block_timestamp FROM chain_clock WHERE id = 1');
+  return (result[0]?.values[0]?.[0] as number) ?? 0;
 }
 
 // ============= Attestation Operations =============

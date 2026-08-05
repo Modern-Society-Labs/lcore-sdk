@@ -14,7 +14,7 @@
 import createClient from 'openapi-fetch';
 import { components, paths } from './schema';
 import { initDatabase } from './db';
-import { initLCoreSchema, getLCoreStats } from './lcore-db';
+import { initLCoreSchema, getLCoreStats, recordChainTime } from './lcore-db';
 import { createRouter } from './router';
 import { lcoreRouteConfig } from './handlers/lcore-index';
 
@@ -79,6 +79,23 @@ const main = async () => {
         case 'advance_state':
           // Handle state-changing request
           console.log(`Advance request received`);
+
+          // Mirror the block production time into state BEFORE dispatching.
+          // The Cartesi machine has no real clock (it reports 1970 + a few
+          // seconds of processing time), and inspect queries receive no
+          // metadata, so this is the only way read-only handlers can learn the
+          // current time. See recordChainTime/getChainTime in lcore-db.ts.
+          //
+          // Safe on rejection: Cartesi rolls state back for rejected inputs, so
+          // this write is discarded along with them.
+          {
+            const advanceData = data.data as AdvanceRequestData;
+            recordChainTime(
+              advanceData.metadata.timestamp,
+              advanceData.metadata.input_index
+            );
+          }
+
           status = await router.handleAdvance(data.data as AdvanceRequestData);
           console.log(`Advance request completed: ${status}`);
 
