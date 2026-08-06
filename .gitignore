@@ -36,6 +36,7 @@ memory-bank/
 docs-content-lcore/
 
 # Internal docs
+INTERNAL-NOTES.md
 SECURITY-ACCESS-CONTROL.md
 cartesi/ARCHITECTURE.md
 data-encryption-fix.md

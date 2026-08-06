@@ -64,7 +64,7 @@
     "url": "https://github.com/Modern-Society-Labs/lcore-sdk/issues"
   },
   "homepage": "https://github.com/Modern-Society-Labs/lcore-sdk",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "engines": {
     "node": ">=20.0.0"
   }

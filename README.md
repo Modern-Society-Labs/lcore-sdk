@@ -221,4 +221,14 @@ Built on open-source infrastructure:
 
 ## License
 
-AGPL-3.0 — Open source, fork it, modify it, audit it. Derivative works must also be open-sourced.
+| Component | License |
+|---|---|
+| Attestor, Cartesi rollup application | AGPL-3.0-only |
+| TypeScript / Python / C device SDKs | MIT |
+
+The device SDKs are MIT so they can be embedded in commercial and proprietary firmware
+with no obligation to publish your code. The server-side components are AGPL-3.0 — fork
+them, modify them, audit them, but if you run a modified L{CORE} service over a network
+you must publish your changes.
+
+See [LICENSING.md](./LICENSING.md) for the full breakdown and rationale.
