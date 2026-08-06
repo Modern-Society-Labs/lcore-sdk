@@ -192,10 +192,50 @@ pass against chain time (proving the fix holds).
 - `rollup-server.ts` is a local dev mock of the rollup HTTP API, not machine code.
 - JWS verification (`crypto/jws.ts`) is pure `@noble` integer/hash code — deterministic.
 
-## The acceptance test that still owes proof
+## Machine-level acceptance test (RUN — results below)
 
-None of the determinism work has been proven at the **machine level**: build the
-RISC-V machine, feed an identical input sequence twice, and diff the resulting
-state-root and output hashes. That requires the `cartesi` build toolchain and is the
-real end-to-end check. Type-checking, `sql.js` round-trips, and unit tests are what
-has been run so far.
+`scripts/verify-determinism.sh` builds nothing but loads the built machine, feeds it a
+rollup input, and prints the resulting state root. Run `npx cartesi build` first, then:
+
+```
+./scripts/verify-determinism.sh
+```
+
+Measured results (cartesi CLI 1.5.0, sdk 0.9.0, machine template hash
+`0xfd0f83947de8ac1d9ee58098aaf8643cb1be7e3f1e0fa7f8ce31b5c20bb28de6`):
+
+| Run | Block timestamp | Final state root |
+|---|---|---|
+| A | 1785974400 | `e070fa02…ce0990eb` |
+| B | 1785974400 (identical) | `e070fa02…ce0990eb` — **identical** |
+| C | 1785978000 (+1h) | `72c427ec…f8af8b5e` — **different** |
+
+- **A == B** proves determinism: the same input yields a bit-identical state root, so
+  two honest validators converge.
+- **A != C** proves the check is not vacuous: block time genuinely reaches state (via
+  `chain_clock`), so the harness would notice if state stopped depending on the input.
+- Rebuilding from unchanged source reproduced A's hash *and* cycle count exactly
+  (3630211648), which also demonstrates build reproducibility.
+
+### What this test does NOT catch — and why that matters
+
+We deliberately re-ran the harness against a build with the old, non-deterministic
+`key_id = \`key_${inputIndex}_${Date.now()}\`` restored. **It still produced identical
+hashes across two runs.**
+
+That is not a flaw in the harness — it is a fact about the platform, and it corrects a
+tempting overstatement. Inside the machine, `Date.now()` is a deterministic function of
+cycle count, so pure machine re-execution *converges even on buggy wall-clock code*.
+A wall-clock read in-machine is therefore not primarily a fraud-proof problem. Its real
+consequences are:
+
+1. **Correctness** — the value is meaningless (1970 + a few seconds), which is exactly
+   how the identity-expiry bug above went unnoticed. This is the one that actually bit.
+2. **Host-mode divergence** — anything run outside the machine (the dev `rollup-server`,
+   `nonodo`, unit tests) sees a real clock and behaves differently from production.
+3. **Cross-build fragility** — the value depends on cycle counts, which change between
+   builds. The buggy build ran to 3633138568 cycles versus 3630211648 for the fixed one,
+   so its "timestamp" would shift with any change to the image.
+
+So: use this harness to catch *state divergence*, and use code review plus the rule
+below to catch *wall-clock reads*. Neither substitutes for the other.
