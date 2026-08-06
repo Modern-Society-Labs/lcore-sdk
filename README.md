@@ -221,14 +221,23 @@ Built on open-source infrastructure:
 
 ## License
 
-| Component | License |
-|---|---|
-| Attestor, Cartesi rollup application | AGPL-3.0-only |
-| TypeScript / Python / C device SDKs | MIT |
+| Component | License | SPDX |
+|---|---|---|
+| `attestor/`, `cartesi/` (and repository root) | AGPL-3.0 | `AGPL-3.0-only` |
+| `packages/typescript`, `packages/python`, `packages/c` | MIT | `MIT` |
 
-The device SDKs are MIT so they can be embedded in commercial and proprietary firmware
-with no obligation to publish your code. The server-side components are AGPL-3.0 — fork
-them, modify them, audit them, but if you run a modified L{CORE} service over a network
-you must publish your changes.
+**Building a device or client?** The SDKs are MIT — embed them in commercial or
+proprietary firmware with no obligation to publish your code.
 
-See [LICENSING.md](./LICENSING.md) for the full breakdown and rationale.
+**Running or modifying the attestor or rollup application?** Those are AGPL-3.0 — fork
+them, modify them, audit them, but if you offer a modified L{CORE} service over a
+network you must publish your changes.
+
+The SDKs can be MIT because they talk to the attestor over HTTP and link no AGPL code:
+no import, `require`, or dependency in any SDK resolves into `attestor/`, and every
+third-party SDK dependency is permissive. *Maintainers: if an SDK ever imports from
+`attestor/`, MIT is no longer available for that package.*
+
+`attestor/` is a fork of [reclaimprotocol/attestor-core](https://github.com/reclaimprotocol/attestor-core)
+(AGPL-3.0); see [`attestor/NOTICE`](./attestor/NOTICE). The C SDK uses MbedTLS
+(Apache-2.0).
