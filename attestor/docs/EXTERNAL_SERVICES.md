@@ -100,7 +100,7 @@ Restart the Attestor container for changes to take effect.
 
 ```bash
 # Test Attestor
-curl http://ATTESTOR_IP:8001/healthcheck
+curl http://ATTESTOR_IP:8001/api/health
 
 # Test Cartesi Node
 curl http://CARTESI_NODE_IP:10000/inspect/...
@@ -300,4 +300,4 @@ docker build -f node.dockerfile -t your-registry/lcore-cartesi-node:eigencloud .
 - [EigenCloud Documentation](https://docs.eigencloud.io)
 - [Cartesi Documentation](https://docs.cartesi.io)
 - [Arbitrum Sepolia Faucet](https://sepoliafaucet.com)
-- [L{CORE} Troubleshooting](./LCORE-TROUBLESHOOTING.md)
+- [L{CORE} Quick Start](./QUICKSTART.md)

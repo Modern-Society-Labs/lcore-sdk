@@ -170,15 +170,15 @@ See [EXTERNAL_SERVICES.md](./EXTERNAL_SERVICES.md) for detailed EigenCloud setup
 ### Test Attestor Health
 
 ```bash
-curl http://YOUR_ATTESTOR_IP:8001/healthcheck
+curl http://YOUR_ATTESTOR_IP:8001/api/health
 ```
 
 Expected response:
 ```json
 {
   "status": "ok",
-  "version": "5.0.0",
-  "lcore_enabled": true
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "version": "5.0.0"
 }
 ```
 
@@ -206,16 +206,13 @@ curl -X POST http://YOUR_ATTESTOR_IP:8001/api/lcore/set-encryption-key \
 Your L{CORE} deployment is now live! Here's what to do next:
 
 1. **Create Provider Schemas** - Define what data you want to attest
-   - See [provider.md](./provider.md) for schema format
+   - See [EXTERNAL_SERVICES.md](./EXTERNAL_SERVICES.md) for infrastructure details
 
-2. **Integrate with Your dApp** - Use the L{CORE} client
-   - See [claim-creation.md](./claim-creation.md) for examples
+2. **Integrate with Your dApp** - Use the L{CORE} TypeScript client in `packages/typescript/`
 
 3. **Set Up Access Control** - Configure who can access attested data
-   - See [LCORE-ARCHITECTURE.md](./LCORE-ARCHITECTURE.md) for access model
 
-4. **Monitor & Debug** - Check logs and troubleshoot
-   - See [LCORE-TROUBLESHOOTING.md](./LCORE-TROUBLESHOOTING.md)
+4. **Monitor & Debug** - Check container logs and health endpoints
 
 ---
 
@@ -238,7 +235,7 @@ Before going live:
 |----------|-----|
 | Attestor API | `http://YOUR_IP:8001` |
 | Cartesi Node | `http://YOUR_IP:10000` |
-| Health Check | `GET /healthcheck` |
+| Health Check | `GET /api/health` |
 | Inspect Query | `GET /inspect/{encoded_query}` |
 
 | Contract | Address (Arbitrum Sepolia) |

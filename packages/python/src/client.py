@@ -250,7 +250,7 @@ class LCore:
             True if server is responding, False otherwise
         """
         try:
-            response = await self.client.get(f"{self.config.attestor_url}/healthcheck")
+            response = await self.client.get(f"{self.config.attestor_url}/api/health")
             return response.status_code == 200
         except Exception:
             return False
@@ -328,7 +328,7 @@ class LCoreSync:
     def health_check(self) -> bool:
         """Check if the attestor server is healthy."""
         try:
-            response = self._client.get(f"{self.config.attestor_url}/healthcheck")
+            response = self._client.get(f"{self.config.attestor_url}/api/health")
             return response.status_code == 200
         except Exception:
             return False
