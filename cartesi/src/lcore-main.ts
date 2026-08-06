@@ -17,6 +17,7 @@ import { initDatabase } from './db';
 import { initLCoreSchema, getLCoreStats, recordChainTime } from './lcore-db';
 import { createRouter } from './router';
 import { lcoreRouteConfig } from './handlers/lcore-index';
+import { getRollupServerUrl } from './config';
 
 // ============= Type Definitions =============
 
@@ -27,7 +28,11 @@ type RollupsRequest = components['schemas']['RollupRequest'];
 
 // ============= Configuration =============
 
-const rollupServer = process.env.ROLLUP_HTTP_SERVER_URL;
+// Use the config helper rather than reading the env var directly: it supplies the
+// local default when ROLLUP_HTTP_SERVER_URL is unset. Reading process.env here
+// left baseUrl undefined, so every request failed with
+// "Failed to parse URL from /finish". In production the Cartesi runtime sets it.
+const rollupServer = getRollupServerUrl();
 console.log('L{CORE} SDK - HTTP rollup_server url is ' + rollupServer);
 
 // ============= Main Function =============

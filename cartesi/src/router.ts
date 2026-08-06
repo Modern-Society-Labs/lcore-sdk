@@ -12,7 +12,7 @@
 
 import { stringToHex } from 'viem';
 import { processOutputSync } from './utils/output';
-import { isDevelopmentMode } from './config';
+import { isDevelopmentMode, getRollupServerUrl } from './config';
 
 // ============= Types =============
 
@@ -54,7 +54,10 @@ export interface RouteConfig {
 
 // ============= Configuration =============
 
-const rollupServer = process.env.ROLLUP_HTTP_SERVER_URL;
+// Via the config helper so the local default applies when the env var is unset.
+// Reading process.env directly here produced "Failed to parse URL from
+// undefined/notice" and killed the app on its first advance.
+const rollupServer = getRollupServerUrl();
 
 /**
  * Maximum payload size in bytes (100KB)

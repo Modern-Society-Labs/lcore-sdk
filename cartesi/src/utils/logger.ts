@@ -110,10 +110,13 @@ function sendToClient(ws: WsClient, message: LogStreamMessage): void {
  */
 export const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino/file',
-    options: { destination: 1 }, // stdout
-  },
+  // No `transport` here on purpose. A transport target runs in a worker thread
+  // (via thread-stream), and esbuild cannot resolve that worker's path inside a
+  // bundle — `node dist/rollup-server.js` died with
+  // "Cannot find module .../dist/lib/worker.js", which broke `npm run
+  // start:servers`. The transport was `pino/file` with destination 1, i.e.
+  // stdout, which is already pino's default. Dropping it fixes the bundle and
+  // removes a worker thread for no loss of behaviour.
   hooks: {
     logMethod(inputArgs, method, level) {
       // Map pino level numbers to our level strings

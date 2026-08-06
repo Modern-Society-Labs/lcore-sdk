@@ -51,20 +51,17 @@ are excluded from `npm test` via `--testPathIgnorePatterns=e2e`.
 
 ```bash
 cd cartesi
+npm run build          # once
 
-# Terminal 1 — mock rollup HTTP API on :5004
-npx ts-node src/rollup-server.ts
+# Terminal 1 — rollup-server on :5004 plus the application
+npm run start:servers
 
-# Terminal 2 — the rollup application, pointed at it
-ROLLUP_HTTP_SERVER_URL=http://127.0.0.1:5004 npx ts-node src/lcore-main.ts
-
-# Terminal 3
+# Terminal 2
 npm run test:e2e
 ```
 
-Note: run the servers with `ts-node`, not the bundled `dist/` output —
-`npm run start:servers` currently fails because pino's worker thread is not
-included in the esbuild bundle.
+No environment variables are needed; the rollup server URL defaults to
+`http://127.0.0.1:5004`. Set `ROLLUP_HTTP_SERVER_URL` to point elsewhere.
 
 These tests share one long-lived database across the run, so use `--runInBand`
 (already set in the `test:e2e` script) to keep them ordered.

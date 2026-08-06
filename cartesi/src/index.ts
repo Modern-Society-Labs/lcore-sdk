@@ -22,6 +22,7 @@ import { components, paths } from './schema';
 import { initDatabase } from './db';
 import { createRouter, RouteConfig } from './router';
 import { initEncryption } from './encryption';
+import { getRollupServerUrl } from './config';
 import {
   // Entity handlers
   handleCreateEntity,
@@ -60,7 +61,7 @@ type RollupsRequest = components['schemas']['RollupRequest'];
 
 // ============= Configuration =============
 
-const rollupServer = process.env.ROLLUP_HTTP_SERVER_URL;
+const rollupServer = getRollupServerUrl();
 console.log('HTTP rollup_server url is ' + rollupServer);
 
 /**
