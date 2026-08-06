@@ -42,15 +42,32 @@ cd packages/c && cmake -B build -DLCORE_USE_CURL=OFF && cmake --build build && .
 ATTESTOR_URL=http://your-attestor:8001 npm run test:smoke
 ```
 
-## Requires a running Cartesi node
+## Rollup e2e — requires the local dev servers
 
-`cartesi/src/__tests__/e2e.*.test.ts` exercise the full rollup against a live node
-and are excluded from `npm test` (`--testPathIgnorePatterns=e2e`). Start a node,
-then:
+`cartesi/src/__tests__/e2e.*.test.ts` (182 tests) drive the rollup application
+through the dev rollup-server harness on port 5004. They do **not** need a real
+Cartesi node, an L2, or a wallet — but they do need both servers running, so they
+are excluded from `npm test` via `--testPathIgnorePatterns=e2e`.
 
 ```bash
-cd cartesi && npm run test:e2e
+cd cartesi
+
+# Terminal 1 — mock rollup HTTP API on :5004
+npx ts-node src/rollup-server.ts
+
+# Terminal 2 — the rollup application, pointed at it
+ROLLUP_HTTP_SERVER_URL=http://127.0.0.1:5004 npx ts-node src/lcore-main.ts
+
+# Terminal 3
+npm run test:e2e
 ```
+
+Note: run the servers with `ts-node`, not the bundled `dist/` output —
+`npm run start:servers` currently fails because pino's worker thread is not
+included in the esbuild bundle.
+
+These tests share one long-lived database across the run, so use `--runInBand`
+(already set in the `test:e2e` script) to keep them ordered.
 
 ## Machine-level determinism
 
