@@ -2,6 +2,7 @@
 Tests for DeviceIdentity class
 """
 
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -9,7 +10,12 @@ from pathlib import Path
 import pytest
 
 from lcore.device import DeviceIdentity
-from lcore.did import verify_jws, parse_did_key
+from lcore.did import (
+    canonicalize_payload,
+    parse_did_key,
+    verify_jws,
+    verify_jws_over_hash,
+)
 
 
 class TestDeviceIdentityGenerate:
@@ -94,10 +100,20 @@ class TestDeviceIdentitySign:
         assert "payload" in result
         assert "signature" in result
         assert "timestamp" in result
+        assert "salt" in result
 
         assert result["did"] == device.did
         assert result["payload"] == payload
         assert isinstance(result["timestamp"], int)
+        # Per-submission salt: 16 random bytes as lowercase hex
+        assert len(result["salt"]) == 32
+        int(result["salt"], 16)  # raises if not hex
+
+    def test_salt_is_unique_per_submission(self):
+        """Each signature must use a fresh salt, or the hash is replayable."""
+        device = DeviceIdentity.generate()
+        salts = {device.sign({"temperature": 23.4})["salt"] for _ in range(5)}
+        assert len(salts) == 5
 
     def test_signature_is_verifiable(self):
         """Signature should be verifiable with public key."""
@@ -106,7 +122,19 @@ class TestDeviceIdentitySign:
 
         result = device.sign(payload)
 
-        is_valid = verify_jws(result["signature"], payload, device.public_key)
+        # sign() signs the salted data_hash, NOT the raw payload:
+        #   data_hash = sha256(JCS(payload) + did + timestamp + salt)
+        combined = (
+            canonicalize_payload(payload)
+            + device.did
+            + str(result["timestamp"])
+            + result["salt"]
+        )
+        data_hash = hashlib.sha256(combined.encode()).hexdigest()
+
+        is_valid = verify_jws_over_hash(
+            result["signature"], data_hash, device.public_key
+        )
         assert is_valid is True
 
     def test_timestamp_is_recent(self):
@@ -190,9 +218,24 @@ class TestDeviceIdentityIntegration:
         signed1 = device.sign(payload1)
         signed2 = device.sign(payload2)
 
-        # Verify signatures
-        assert verify_jws(signed1["signature"], payload1, device.public_key)
-        assert verify_jws(signed2["signature"], payload2, device.public_key)
+        # Signatures are over the salted data_hash, not the raw payload
+        def data_hash(payload, signed):
+            combined = (
+                canonicalize_payload(payload)
+                + device.did
+                + str(signed["timestamp"])
+                + signed["salt"]
+            )
+            return hashlib.sha256(combined.encode()).hexdigest()
 
-        # Cross-verification should fail
-        assert not verify_jws(signed1["signature"], payload2, device.public_key)
+        assert verify_jws_over_hash(
+            signed1["signature"], data_hash(payload1, signed1), device.public_key
+        )
+        assert verify_jws_over_hash(
+            signed2["signature"], data_hash(payload2, signed2), device.public_key
+        )
+
+        # Cross-verification must fail: signature 1 does not cover payload 2
+        assert not verify_jws_over_hash(
+            signed1["signature"], data_hash(payload2, signed2), device.public_key
+        )

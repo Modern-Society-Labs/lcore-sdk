@@ -195,6 +195,57 @@ def create_jws_over_hash(hash_hex: str, private_key: bytes) -> str:
     return f"{header_b64}.{payload_b64}.{sig_b64}"
 
 
+def verify_jws_over_hash(jws: str, hash_hex: str, public_key: bytes) -> bool:
+    """
+    Verify a JWS whose payload segment is a raw hash string.
+
+    This is the counterpart to create_jws_over_hash, and mirrors the attestor's
+    verifyJWSOverHash: device submissions sign the deterministic data_hash, not
+    the raw payload object.
+
+    Args:
+        jws: JWS compact serialization
+        hash_hex: The expected data_hash (64-char hex)
+        public_key: 33-byte compressed secp256k1 public key
+
+    Returns:
+        True if the signature is valid for that hash, False otherwise
+    """
+    try:
+        parts = jws.split(".")
+        if len(parts) != 3:
+            return False
+
+        header_b64, payload_b64, sig_b64 = parts
+
+        # The payload segment must be exactly the expected hash
+        if payload_b64 != _base64url_encode(hash_hex.encode()):
+            return False
+
+        signing_input = f"{header_b64}.{payload_b64}"
+        message_hash = hashlib.sha256(signing_input.encode()).digest()
+
+        signature = _base64url_decode(sig_b64)
+        if len(signature) != 64:
+            return False
+
+        for recovery_id in range(4):
+            try:
+                recoverable_sig = signature + bytes([recovery_id])
+                recovered_pub = PublicKey.from_signature_and_message(
+                    recoverable_sig, message_hash, hasher=None
+                )
+                if recovered_pub.format(compressed=True) == public_key:
+                    return True
+            except Exception:
+                continue
+
+        return False
+
+    except Exception:
+        return False
+
+
 def verify_jws(jws: str, payload: dict, public_key: bytes) -> bool:
     """
     Verify a JWS signature against a payload and public key.

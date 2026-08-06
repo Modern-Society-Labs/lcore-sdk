@@ -45,11 +45,15 @@ data-encryption-fix.md
 .cartesi/
 .playwright-mcp/
 
-# All tests and test scripts
-tests/
-cartesi/src/__tests__/
+# Scratch test scripts (not part of the suite)
 test-submit.mts
 check-inputs.mts
+
+# Test scripts pinned to decommissioned infrastructure (hardcoded hosts).
+# Excluded rather than published; parameterize via env before restoring.
+tests/pi5_continuous_test.py
+tests/pi5_sensehat_test.py
+tests/test_eigencloud_e2e.py
 
 # SDK v2 handoff package (local only)
 sdk-v2/

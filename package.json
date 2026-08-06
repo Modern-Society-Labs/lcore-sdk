@@ -6,9 +6,8 @@
   "description": "L{CORE} SDK - IoT attestation layer for Cartesi rollups",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
-    "test:did": "node --experimental-strip-types --test tests/attestor/did.test.ts",
-    "test:device": "node --experimental-strip-types --test tests/attestor/device.test.ts"
+    "test": "node --experimental-strip-types --test --test-force-exit tests/attestor/did.test.ts tests/attestor/device.test.ts tests/attestor/inspect-proxy.test.ts tests/attestor/submission-batcher.test.ts",
+    "test:smoke": "node --experimental-strip-types --test --test-force-exit tests/attestor/smoke.test.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.8.2",
