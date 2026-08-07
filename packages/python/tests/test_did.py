@@ -10,6 +10,7 @@ from lcore.did import (
     parse_did_key,
     create_jws,
     verify_jws,
+    canonicalize_payload,
 )
 
 
@@ -220,3 +221,51 @@ class TestRoundTrip:
         # Verify with parsed public key
         result = verify_jws(jws, payload, parsed_pub)
         assert result is True
+
+
+class TestCanonicalization:
+    """
+    RFC 8785 (JCS) canonicalization must byte-match the attestor's canonicalizer,
+    or the device and attestor compute different data_hashes and submissions are
+    rejected with a 401.
+
+    The expected values below were produced by the `canonicalize` npm package —
+    the exact library the attestor uses.
+    """
+
+    def test_whole_number_floats_drop_the_fraction(self):
+        """100.0 must serialize as 100, not 100.0.
+
+        This is the case that mattered in practice: a humidity reading of 100.0
+        or a temperature of 20.0 is ordinary sensor data, and Python's json.dumps
+        would have produced a non-matching hash.
+        """
+        assert canonicalize_payload({"v": 100.0}) == '{"v":100}'
+        assert canonicalize_payload({"v": 20.0}) == '{"v":20}'
+        assert canonicalize_payload({"v": -100.0}) == '{"v":-100}'
+
+    def test_exponent_is_not_zero_padded(self):
+        """1e-7, not Python's 1e-07."""
+        assert canonicalize_payload({"v": 1e-7}) == '{"v":1e-7}'
+        assert canonicalize_payload({"v": 1e21}) == '{"v":1e+21}'
+        assert canonicalize_payload({"v": 1e100}) == '{"v":1e+100}'
+
+    def test_ordinary_values_are_unchanged(self):
+        assert canonicalize_payload({"v": 23.4}) == '{"v":23.4}'
+        assert canonicalize_payload({"v": 0.1}) == '{"v":0.1}'
+        assert canonicalize_payload({"v": 65}) == '{"v":65}'
+        assert canonicalize_payload({"v": True}) == '{"v":true}'
+        assert canonicalize_payload({"v": None}) == '{"v":null}'
+        assert canonicalize_payload({"v": "str"}) == '{"v":"str"}'
+
+    def test_keys_are_sorted(self):
+        assert canonicalize_payload({"b": 1, "a": 2}) == '{"a":2,"b":1}'
+
+    def test_nested_structures(self):
+        payload = {"nested": {"z": 1.0, "a": [1.0, 2.5, "x", False]}}
+        assert canonicalize_payload(payload) == '{"nested":{"a":[1,2.5,"x",false],"z":1}}'
+
+    def test_rejects_nan_and_infinity(self):
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            with pytest.raises(ValueError):
+                canonicalize_payload({"v": bad})

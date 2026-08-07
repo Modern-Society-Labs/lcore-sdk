@@ -405,7 +405,10 @@ async function submitIdentityAttestation(
 		const now = Math.floor(Date.now() / 1000)
 		const oneYear = 365 * 24 * 60 * 60
 
-		// Build the attestation claim (no PII)
+		// Build the attestation claim (no PII).
+		// session_id is INSIDE the signed claim on purpose: Cartesi keys idempotency
+		// on (user_did, provider, session_id), so leaving it outside the signature
+		// let a captured claim be replayed under a fresh session id.
 		const claim = {
 			user_did: userDid,
 			provider: result.provider,
@@ -414,6 +417,7 @@ async function submitIdentityAttestation(
 			verified: true,
 			issued_at: now,
 			expires_at: now + oneYear,
+			session_id: sessionId,
 		}
 
 		// Sign the claim with attestor key
@@ -424,7 +428,6 @@ async function submitIdentityAttestation(
 			action: 'identity_attestation',
 			...claim,
 			attestor_signature: attestorSignature,
-			session_id: sessionId,
 		}
 
 		const wallet = getWallet()

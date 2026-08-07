@@ -151,19 +151,80 @@ def create_jws(payload: dict, private_key: bytes) -> str:
     return f"{header_b64}.{payload_b64}.{sig_b64}"
 
 
+def _jcs_number(value):
+    """
+    Serialize a number the way RFC 8785 (JCS) requires — i.e. the way ECMAScript
+    Number::toString does, which is what the attestor's canonicalizer produces.
+
+    Python's json.dumps does NOT match in two common cases:
+
+        100.0   -> Python "100.0",  JavaScript "100"
+        1e-7    -> Python "1e-07",  JavaScript "1e-7"
+
+    The first matters a great deal in practice: a whole-number sensor reading
+    (humidity 100.0, temperature 20.0) would otherwise hash differently on Python
+    than on the attestor and be rejected with a 401.
+    """
+    if isinstance(value, bool):  # bool is a subclass of int — must come first
+        return "true" if value else "false"
+
+    if isinstance(value, int):
+        return str(value)
+
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError("NaN and Infinity cannot be serialized as canonical JSON")
+
+    # ECMAScript prints integral values without a fractional part, up to 1e21
+    # where it switches to exponential form.
+    if value == int(value) and abs(value) < 1e21:
+        return str(int(value))
+
+    out = repr(float(value))
+
+    # Normalize the exponent: Python zero-pads ("1e-07"), ECMAScript does not.
+    if "e" in out:
+        mantissa, exponent = out.split("e", 1)
+        sign = ""
+        if exponent[0] in "+-":
+            sign, exponent = exponent[0], exponent[1:]
+        exponent = exponent.lstrip("0") or "0"
+        # ECMAScript keeps an explicit '+' on positive exponents
+        out = f"{mantissa}e{sign if sign else '+'}{exponent}"
+
+    return out
+
+
+def _jcs_serialize(value) -> str:
+    """Recursively serialize a value to RFC 8785 canonical JSON."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return _jcs_number(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_jcs_serialize(v) for v in value) + "]"
+    if isinstance(value, dict):
+        # JCS sorts object keys by their UTF-16 code units
+        items = sorted(value.items(), key=lambda kv: kv[0].encode("utf-16-be"))
+        return "{" + ",".join(
+            json.dumps(k, ensure_ascii=False) + ":" + _jcs_serialize(v)
+            for k, v in items
+        ) + "}"
+    raise TypeError(f"cannot canonicalize {type(value).__name__}")
+
+
 def canonicalize_payload(payload: dict) -> str:
     """
-    Produce canonical JSON for hashing: sorted keys, compact separators, UTF-8.
+    Produce RFC 8785 (JCS) canonical JSON for hashing.
 
-    This must byte-match the attestor's canonicalizer so the device and attestor
-    compute the same data_hash. It matches RFC 8785 (JCS) for objects, strings,
-    booleans, null and integers.
-
-    CAVEAT: floating-point formatting can differ from the JavaScript canonicalizer
-    for edge cases. For guaranteed cross-SDK hash parity, send numeric sensor
-    values as integers or strings (e.g. "23.4"), not raw floats.
+    This byte-matches the attestor's canonicalizer, so the device and the attestor
+    compute the same data_hash. Number formatting follows ECMAScript rules — see
+    _jcs_number for why Python's json.dumps is not sufficient on its own.
     """
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return _jcs_serialize(payload)
 
 
 def create_jws_over_hash(hash_hex: str, private_key: bytes) -> str:
