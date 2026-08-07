@@ -15,12 +15,17 @@
 
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
 #include <ESP8266HTTPClient.h>
 #elif defined(ESP32)
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #else
 #include <WiFi.h>
+#if defined(WIFININA_H) || defined(WIFI101_H) || defined(ARDUINO_SAMD_MKRWIFI1010) || defined(ARDUINO_SAMD_NANO_33_IOT)
+#include <WiFiSSLClient.h>
+#endif
 #include <ArduinoHttpClient.h>
 #endif
 
@@ -44,10 +49,42 @@ extern "C" int lcore_submit(const char* attestor_url, const char* did,
         did, payload_json, jws, (unsigned long long)timestamp, salt_hex);
     if (body_len < 0 || (size_t)body_len >= sizeof(body)) return LCORE_ERR_BUFFER;
 
+    const bool useTls = (strncmp(attestor_url, "https://", 8) == 0);
+    const char* caCert = lcore_get_ca_cert();
+
+    /* Fail closed: an https:// URL with no trust anchor must not silently fall
+     * back to plaintext. Call lcore_set_ca_cert(), or lcore_tls_allow_insecure(1)
+     * for development only. */
+    if (useTls && !caCert && !lcore_tls_insecure_allowed()) {
+        Serial.println("[lcore] https:// requires a CA cert - call lcore_set_ca_cert()");
+        return LCORE_ERR_TLS;
+    }
+
 #if defined(ESP8266) || defined(ESP32)
     /* ESP8266/ESP32 Arduino core has built-in HTTPClient */
     HTTPClient http;
-    WiFiClient client;
+    WiFiClient plainClient;
+    WiFiClientSecure secureClient;
+
+    if (useTls) {
+        if (caCert) {
+#if defined(ESP8266)
+            /* Static so the trust anchor is parsed once. Allocating per call
+             * would leak heap on every submission and eventually brick a
+             * long-running device. */
+            static BearSSL::X509List trustAnchor(caCert);
+            secureClient.setTrustAnchors(&trustAnchor);
+#else
+            secureClient.setCACert(caCert);
+#endif
+        } else {
+            secureClient.setInsecure(); /* explicitly opted in above */
+        }
+    }
+
+    WiFiClient& client = useTls
+        ? static_cast<WiFiClient&>(secureClient)
+        : plainClient;
 
     if (!http.begin(client, url)) {
         Serial.println("[lcore] HTTP begin failed");
@@ -100,8 +137,25 @@ extern "C" int lcore_submit(const char* attestor_url, const char* did,
         host[sizeof(host) - 1] = '\0';
     }
 
-    WiFiClient wifiClient;
-    HttpClient http(wifiClient, host, port);
+    /* WiFiSSLClient ships with WiFiNINA/WiFi101 and verifies against the CA store
+     * burned into the board's WiFi module (upload roots with the Arduino
+     * Firmware Updater). Cores without WiFiSSLClient must supply their own secure
+     * client — refuse TLS rather than quietly sending plaintext. */
+    WiFiClient plainClient;
+#if defined(WIFI_SSL_CLIENT_AVAILABLE) || defined(WIFININA_H) || defined(WIFI101_H) || defined(ARDUINO_SAMD_MKRWIFI1010) || defined(ARDUINO_SAMD_NANO_33_IOT)
+    WiFiSSLClient sslClient;
+    Client& netClient = useTls
+        ? static_cast<Client&>(sslClient)
+        : static_cast<Client&>(plainClient);
+#else
+    if (useTls) {
+        Serial.println("[lcore] TLS unsupported on this core - no WiFiSSLClient");
+        return LCORE_ERR_TLS;
+    }
+    Client& netClient = static_cast<Client&>(plainClient);
+#endif
+
+    HttpClient http(netClient, host, port);
 
     http.beginRequest();
     http.post(path);

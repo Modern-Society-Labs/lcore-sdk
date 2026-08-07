@@ -362,6 +362,30 @@ int lcore_create_jws_over_hash(const char* hash_hex, const uint8_t privkey[32],
 }
 
 /* ============================================================================
+ * TLS configuration
+ * ============================================================================ */
+
+static const char* g_ca_cert = NULL;
+static int g_tls_insecure = 0;
+
+int lcore_set_ca_cert(const char* pem) {
+    g_ca_cert = pem;
+    return LCORE_OK;
+}
+
+void lcore_tls_allow_insecure(int allow) {
+    g_tls_insecure = allow ? 1 : 0;
+}
+
+const char* lcore_get_ca_cert(void) {
+    return g_ca_cert;
+}
+
+int lcore_tls_insecure_allowed(void) {
+    return g_tls_insecure;
+}
+
+/* ============================================================================
  * HTTP Submission
  * ============================================================================ */
 
@@ -398,6 +422,25 @@ int lcore_submit(const char* attestor_url, const char* did,
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    /* TLS. libcurl verifies by default, but set it explicitly so the guarantee is
+     * visible and cannot be lost to a build with different defaults. */
+    if (lcore_tls_insecure_allowed()) {
+        /* DEV ONLY - caller opted in via lcore_tls_allow_insecure() */
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    } else {
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+        if (lcore_get_ca_cert()) {
+            /* Pin to a caller-supplied CA rather than the system store */
+            struct curl_blob blob;
+            blob.data = (void*)lcore_get_ca_cert();
+            blob.len = strlen(lcore_get_ca_cert());
+            blob.flags = CURL_BLOB_COPY;
+            curl_easy_setopt(curl, CURLOPT_CAINFO_BLOB, &blob);
+        }
+    }
 
     CURLcode res = curl_easy_perform(curl);
 

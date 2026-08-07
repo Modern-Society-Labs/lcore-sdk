@@ -49,13 +49,30 @@ int lcore_submit(const char* attestor_url, const char* did,
         did, payload_json, jws, (unsigned long long)timestamp, salt_hex);
     if (body_len < 0 || (size_t)body_len >= sizeof(body)) return LCORE_ERR_BUFFER;
 
+    const int use_tls = (strncmp(attestor_url, "https://", 8) == 0);
+    const char* ca_cert = lcore_get_ca_cert();
+
+    /* Fail closed: never silently downgrade an https:// URL to plaintext. */
+    if (use_tls && !ca_cert && !lcore_tls_insecure_allowed()) {
+        ESP_LOGE(TAG, "https:// requires a CA cert - call lcore_set_ca_cert()");
+        return LCORE_ERR_TLS;
+    }
+
     /* Configure HTTP client */
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_POST,
         .event_handler = http_event_handler,
         .timeout_ms = 10000,
+        /* PEM trust anchor when supplied; otherwise verification is skipped only
+         * because the caller explicitly opted in above. */
+        .cert_pem = ca_cert,
+        .skip_cert_common_name_check = false,
     };
+    if (use_tls && !ca_cert) {
+        /* Explicit dev-only opt-in (lcore_tls_allow_insecure) */
+        config.crt_bundle_attach = NULL;
+    }
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {

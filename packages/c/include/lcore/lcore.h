@@ -43,6 +43,7 @@ extern "C" {
 #define LCORE_ERR_BUFFER     -2
 #define LCORE_ERR_CRYPTO     -3
 #define LCORE_ERR_HTTP       -4
+#define LCORE_ERR_TLS        -5
 
 /**
  * Generate did:key string from secp256k1 private key.
@@ -155,6 +156,43 @@ int lcore_submit(const char* attestor_url, const char* did,
  */
 int lcore_sign_and_submit(const char* attestor_url, const uint8_t privkey[32],
                           const char* payload_json);
+
+/* ============================================================================
+ * TLS configuration
+ *
+ * When the attestor URL uses https://, transports verify the server certificate
+ * against a CA certificate you supply. Sensor data and device DIDs would
+ * otherwise travel in the clear, and a JWS signature protects against tampering
+ * but NOT against disclosure or replay.
+ *
+ * If an https:// URL is used and neither a CA certificate nor the explicit
+ * insecure opt-in has been set, submission fails with LCORE_ERR_TLS rather than
+ * silently falling back to plaintext.
+ * ============================================================================ */
+
+/**
+ * Set the PEM-encoded CA certificate used to verify the attestor's certificate.
+ * The string is stored by pointer and must remain valid for the program's
+ * lifetime (a string literal in flash is ideal on embedded targets).
+ *
+ * @param pem  PEM-encoded CA certificate, or NULL to clear
+ * @return     LCORE_OK on success
+ */
+int lcore_set_ca_cert(const char* pem);
+
+/**
+ * Allow TLS without certificate verification. DEVELOPMENT ONLY — this accepts
+ * any certificate and provides no protection against an active attacker.
+ *
+ * @param allow  non-zero to permit unverified TLS
+ */
+void lcore_tls_allow_insecure(int allow);
+
+/** Get the configured CA certificate, or NULL if unset. (Used by transports.) */
+const char* lcore_get_ca_cert(void);
+
+/** Non-zero if unverified TLS has been explicitly permitted. (Used by transports.) */
+int lcore_tls_insecure_allowed(void);
 
 /* Utility functions */
 
