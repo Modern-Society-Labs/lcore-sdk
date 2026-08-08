@@ -201,8 +201,16 @@ rollup input, and prints the resulting state root. Run `npx cartesi build` first
 ./scripts/verify-determinism.sh
 ```
 
-Measured results (cartesi CLI 1.5.0, sdk 0.9.0, machine template hash
-`0xfd0f83947de8ac1d9ee58098aaf8643cb1be7e3f1e0fa7f8ce31b5c20bb28de6`):
+Measured results below are from the build at commit `69203b2` (cartesi CLI 1.5.0,
+sdk 0.9.0), whose machine template hash was
+`0xfd0f83947de8ac1d9ee58098aaf8643cb1be7e3f1e0fa7f8ce31b5c20bb28de6`.
+
+> **The hash and the state roots are properties of one specific build.** Any change
+> to `cartesi/src`, the Dockerfile, or a dependency produces a different template
+> hash — and therefore different state roots — by design. Re-run
+> `npx cartesi build && npx cartesi hash` after any such change; do not expect the
+> values below to match a later build. What must stay true is the *relationship*:
+> run A and run B identical, run C different.
 
 | Run | Block timestamp | Final state root |
 |---|---|---|
