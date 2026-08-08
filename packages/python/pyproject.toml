@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lcore-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK for L{CORE} - Privacy-preserving IoT attestation layer"
 readme = "README.md"
 license = "MIT"
@@ -42,7 +42,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/Modern-Society-Labs/lcore-sdk"
-Documentation = "https://github.com/Modern-Society-Labs/lcore-sdk/tree/main/docs"
+Documentation = "https://docs.locale.cash"
 Repository = "https://github.com/Modern-Society-Labs/lcore-sdk"
 
 [tool.hatch.build.targets.wheel]

@@ -4,14 +4,22 @@ TypeScript SDK for L{CORE} - Privacy-preserving attestation layer for off-chain 
 
 ## Installation
 
+Not yet published to npm — build from source:
+
 ```bash
-npm install @localecore/lcore-sdk
+git clone https://github.com/Modern-Society-Labs/lcore-sdk.git
+cd lcore-sdk/packages/typescript
+npm install
+npm run build
 ```
+
+Then reference it from your project (for example via `npm link`, a workspace, or a
+file: dependency).
 
 ## Quick Start
 
 ```typescript
-import { LCore } from '@localecore/lcore-sdk'
+import { LCore } from '@localecore/lcore-sdk' // local build; see Installation
 
 const lcore = new LCore({
   attestorUrl: 'http://localhost:8001',
