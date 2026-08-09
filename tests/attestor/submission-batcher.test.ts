@@ -144,3 +144,54 @@ describe('SubmissionBatcher', () => {
 		void batcher.stop()
 	})
 })
+
+describe('SubmissionBatcher byte budget', () => {
+	/**
+	 * The InputBox caps input size, and in rollups-contracts v2 that cap drops to
+	 * 64 KB with the transaction REVERTING rather than the input being rejected.
+	 * Batching on count alone could exceed it, so the batcher budgets bytes too.
+	 */
+	function makeBigSub(i: number, payloadBytes: number): BatchableSubmission {
+		return { ...makeSub(i), encrypted_data: 'x'.repeat(payloadBytes) }
+	}
+
+	let batches: BatchableSubmission[][]
+	let flush: (subs: BatchableSubmission[]) => Promise<BatchFlushResult>
+
+	beforeEach(() => {
+		batches = []
+		flush = async (subs) => {
+			batches.push([...subs])
+			return { success: true, count: subs.length, txHash: '0xabc', blockNumber: 1 }
+		}
+	})
+
+	it('flushes on the byte budget before the count limit is reached', async () => {
+		// maxSize 100 would never trigger; the byte budget must be what flushes.
+		const b = new SubmissionBatcher(flush, { maxSize: 100, maxBytes: 4096 })
+		for (let i = 0; i < 6; i++) await b.add(makeBigSub(i, 1000))
+
+		assert.ok(batches.length >= 1, 'expected at least one byte-triggered flush')
+		for (const batch of batches) {
+			const bytes = Buffer.byteLength(JSON.stringify(batch), 'utf8')
+			assert.ok(bytes <= 4096 * 1.5, `batch of ${bytes}B exceeded the budget`)
+		}
+	})
+
+	it('keeps every submission across byte-triggered flushes', async () => {
+		const b = new SubmissionBatcher(flush, { maxSize: 100, maxBytes: 4096 })
+		for (let i = 0; i < 10; i++) await b.add(makeBigSub(i, 1000))
+		await b.stop()
+
+		const delivered = batches.flat().length
+		assert.equal(delivered, 10, 'submissions were dropped by the byte budget')
+	})
+
+	it('still honours the count limit when payloads are small', async () => {
+		const b = new SubmissionBatcher(flush, { maxSize: 3, maxBytes: 1024 * 1024 })
+		for (let i = 0; i < 3; i++) await b.add(makeSub(i))
+
+		assert.equal(batches.length, 1)
+		assert.equal(batches[0].length, 3)
+	})
+})

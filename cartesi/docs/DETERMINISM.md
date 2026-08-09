@@ -212,6 +212,17 @@ sdk 0.9.0), whose machine template hash was
 > values below to match a later build. What must stay true is the *relationship*:
 > run A and run B identical, run C different.
 
+**Current baseline** — rebuilt at commit `0865842` (cartesi CLI 1.5.0, sdk 0.9.0),
+recorded before any Cartesi node upgrade so the upgrade has a before-picture:
+
+| | Value |
+|---|---|
+| Template hash | `0x367ad0ad6184088301f219e9b75d62622544583e66912247166a64718108b791` |
+| State root, runs A and B (identical input) | `c6637061ff15b5f878629ebaf90d1835d5cd92d0bb60ca0aa915d481893f8543` |
+| State root, run C (block time +1h) | `0656d169be97fc93cf48cb2259cc18044df71beedeb31219e6cb743c0b452679` |
+
+Both properties held: A == B, and A != C.
+
 | Run | Block timestamp | Final state root |
 |---|---|---|
 | A | 1785974400 | `e070fa02…ce0990eb` |

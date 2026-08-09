@@ -32,20 +32,51 @@ export interface BatchFlushResult {
 
 export type FlushFn = (submissions: BatchableSubmission[]) => Promise<BatchFlushResult>
 
+/**
+ * Byte budget for a single batch.
+ *
+ * The Cartesi InputBox caps the size of an input. On the rollups-contracts line
+ * this repo currently targets that cap is ~2 MB, but in contracts v2 it drops to
+ * 64 KB (CanonicalMachine.INPUT_MAX_SIZE, 1<<16) and InputBox REVERTS the
+ * transaction rather than rejecting the input — so an oversized batch fails as a
+ * failed tx, after gas, with no rollup-level error to inspect.
+ *
+ * Batching previously flushed on count and time only, with no byte awareness, so
+ * a batch of large payloads could exceed the cap. We budget against the v2 limit
+ * now: it is well within the current cap, costs only slightly more frequent
+ * flushes, and means the upgrade does not silently break ingestion.
+ *
+ * The margin covers ABI encoding overhead — the on-chain check measures the full
+ * encoded EvmAdvance call, not the JSON payload.
+ */
+const DEFAULT_MAX_BATCH_BYTES = 56 * 1024
+
 export class SubmissionBatcher {
 	private buffer: BatchableSubmission[] = []
+	private bufferBytes = 0
 	private flushInterval: number
 	private maxSize: number
+	private maxBytes: number
 	private flushFn: FlushFn
 	private timer: ReturnType<typeof setInterval> | null = null
 	private flushing = false
 
-	constructor(flushFn: FlushFn, options?: { flushInterval?: number; maxSize?: number }) {
+	constructor(
+		flushFn: FlushFn,
+		options?: { flushInterval?: number; maxSize?: number; maxBytes?: number }
+	) {
 		this.flushFn = flushFn
 		this.flushInterval = options?.flushInterval ??
 			parseInt(process.env.LCORE_BATCH_FLUSH_INTERVAL || '30000', 10)
 		this.maxSize = options?.maxSize ??
 			parseInt(process.env.LCORE_BATCH_MAX_SIZE || '50', 10)
+		this.maxBytes = options?.maxBytes ??
+			parseInt(process.env.LCORE_BATCH_MAX_BYTES || String(DEFAULT_MAX_BATCH_BYTES), 10)
+	}
+
+	/** Encoded size of one submission, as it will appear in the batch payload. */
+	private sizeOf(submission: BatchableSubmission): number {
+		return Buffer.byteLength(JSON.stringify(submission), 'utf8')
 	}
 
 	/**
@@ -79,13 +110,23 @@ export class SubmissionBatcher {
 	 * If maxSize is reached, returns the flush result.
 	 */
 	async add(submission: BatchableSubmission): Promise<BatchFlushResult | null> {
-		this.buffer.push(submission)
+		const size = this.sizeOf(submission)
 
-		if (this.buffer.length >= this.maxSize) {
+		// Flush BEFORE adding if this submission would push the batch over the byte
+		// budget, so the batch we send stays under the InputBox limit.
+		let pendingResult: BatchFlushResult | null = null
+		if (this.buffer.length > 0 && this.bufferBytes + size > this.maxBytes) {
+			pendingResult = await this.flush()
+		}
+
+		this.buffer.push(submission)
+		this.bufferBytes += size
+
+		if (this.buffer.length >= this.maxSize || this.bufferBytes >= this.maxBytes) {
 			return this.flush()
 		}
 
-		return null
+		return pendingResult
 	}
 
 	/**
@@ -103,6 +144,7 @@ export class SubmissionBatcher {
 
 		this.flushing = true
 		const batch = this.buffer.splice(0)
+		this.bufferBytes = 0
 
 		try {
 			const result = await this.flushFn(batch)
